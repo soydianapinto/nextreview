@@ -1,2 +1,18 @@
-# nextreview
-A minimalist, platform-agnostic tool to queue, claim, and track PR/MR reviews in real-time across your dev team.
+# Next Review Chrome Extension
+
+Chrome Extension (Manifest V3) built with React, TypeScript, Vite, and Tailwind CSS.
+
+## Development
+
+```bash
+npm install
+npm run dev
+```
+
+## Build
+
+```bash
+npm run build
+```
+
+The production extension bundle is generated in `dist/` (including `manifest.json`, `background.js`, and popup assets).
