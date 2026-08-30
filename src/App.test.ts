@@ -1,0 +1,34 @@
+import { describe, expect, it } from 'vitest'
+
+import { appendQueueItem, createQueueTitle, openReviewTab, replaceQueueItem } from './App'
+
+describe('createQueueTitle', () => {
+  it('prefers the PR id when available', () => {
+    expect(createQueueTitle('pr-123', 'https://github.com/org/repo/pull/1')).toBe('PR: pr-123')
+  })
+
+  it('falls back to url when there is no id', () => {
+    expect(createQueueTitle('', 'https://github.com/org/repo/pull/1')).toBe('PR: pull / 1')
+  })
+
+  it('adds a newly enqueued PR without duplicating it', () => {
+    const queue = [{ id: 'pr-1', title: 'PR: pr-1', url: 'https://example.com/pr/1' }]
+    const next = appendQueueItem(queue, { id: 'pr-2', title: 'PR: pr-2', url: 'https://example.com/pr/2' })
+
+    expect(next).toHaveLength(2)
+    expect(next.map((item) => item.id)).toEqual(['pr-1', 'pr-2'])
+
+    expect(appendQueueItem(next, { id: 'pr-2', title: 'PR: pr-2', url: 'https://example.com/pr/2' })).toHaveLength(2)
+  })
+
+  it('replaces an optimistic item with the inserted PR id', () => {
+    const optimisticItem = { id: 'temp-1', title: 'PR: pull / 1', url: 'https://example.com/pr/1', status: 'OPEN' as const }
+    const insertedItem = { id: 'pr-1', title: 'PR: pr-1', url: optimisticItem.url, status: 'OPEN' as const }
+
+    expect(replaceQueueItem([optimisticItem], optimisticItem.id, insertedItem)).toEqual([insertedItem])
+  })
+
+  it('does nothing when a review URL is empty', () => {
+    expect(() => openReviewTab('  ')).not.toThrow()
+  })
+})
