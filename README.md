@@ -10,11 +10,11 @@ Next Review is a Manifest V3 Chrome extension for sharing a pull request review 
 
 Popup: enqueue a PR, set a username and reminder interval, then review teammates’ cards.
 
-![Quick view of the Next Review popup](public/Quick%20View%20of%20The%20Extension.png)
+<img src="public/Quick%20View%20of%20The%20Extension.png" alt="Quick view of the Next Review popup" width="150" />
 
 Native macOS notification when reviews are waiting. The service worker sends these through `chrome.notifications`.
 
-![Next Review desktop notification on macOS](public/Notification%20View%20on%20MacOS.png)
+<img src="public/Notification%20View%20on%20MacOS.png" alt="Next Review desktop notification on macOS" width="160" />
 
 ## Features
 
