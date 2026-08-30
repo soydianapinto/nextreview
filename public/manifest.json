@@ -3,11 +3,7 @@
   "name": "Next Review",
   "version": "0.1.0",
   "description": "Queue and track pull request reviews with desktop reminders.",
-  "permissions": ["storage", "notifications", "activeTab"],
-  "background": {
-    "service_worker": "background.js",
-    "type": "module"
-  },
+  "permissions": ["storage", "activeTab"],
   "action": {
     "default_title": "Next Review",
     "default_popup": "index.html"
