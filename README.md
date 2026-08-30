@@ -2,34 +2,71 @@
 
 Next Review is a Manifest V3 Chrome extension for sharing a pull request review queue with a team. It uses React, TypeScript, Vite, and Supabase.
 
+<p align="center">
+  <img src="public/icon-128.png" alt="Next Review icon" width="128" height="128" />
+</p>
+
+## Screenshots
+
+Popup: enqueue a PR, set a username and reminder interval, then review teammates’ cards.
+
+![Quick view of the Next Review popup](public/Quick%20View%20of%20The%20Extension.png)
+
+Native macOS notification when reviews are waiting. The service worker sends these through `chrome.notifications`.
+
+![Next Review desktop notification on macOS](public/Notification%20View%20on%20MacOS.png)
+
 ## Features
 
-- Enqueue a pull request or merge request URL.
-- Add an optional human-readable title or context for each PR.
-- Show the PR id and current status (`OPEN` or `MERGED`).
-- Hide PRs that the current user has marked as reviewed.
-- Delete PRs from the queue.
-- Ping a PR and see confirmation in the card.
-- Receive queue changes through Supabase Realtime without manually refreshing.
-- Update enqueue and delete actions optimistically in the popup. Failed deletes are restored automatically.
-
-### Ping / Notify Update
-
-The **ping** (or "Notify Update") is used to **let your team know that you have applied the suggested changes to a PR and that it is ready for a second review**, without having to look for each teammate individually in Slack or Teams.
+- Enqueue a pull request or merge request URL with an optional title.
+- Share one team queue (everyone on the same Supabase project uses the same team).
+- Persist a username in the current browser. Leave it blank to get a name like `Developer 1`.
+- Show author (`by {username}`), created time, reviewers (`reviewed by {username}`), and status on every card.
+- Statuses: `OPEN`, `REVIEWED`, `NEEDS REVIEW`, and `MERGED`.
+- Role-based actions:
+  - **Author:** Notify and Delete. You cannot Review or Done Review your own PR.
+  - **Reviewer:** Review and Done Review. You cannot Notify or Delete someone else’s PR.
+- Hide a card for a reviewer after they click Done Review. The author still sees it as `REVIEWED`.
+- Notify after you apply review feedback. The card comes back for reviewers as `NEEDS REVIEW`, and they get a desktop notification. Your own screen does not toast for a ping you just sent.
+- Recurring desktop reminders (5, 10, 15, 30, or 60 minutes) for other people’s `OPEN` or `NEEDS REVIEW` cards. Your own PRs do not trigger a reminder.
+- Do Not Disturb pauses reminders and ping toasts for that browser.
+- Receive queue changes through Supabase Realtime without refreshing.
+- Optimistic enqueue and delete in the popup. Failed deletes are restored automatically.
 
 ## Happy Path
 
-How It Works (The Workflow)
+How it works (the workflow):
 
-1. 📥 Enqueue (Dev A): Paste your PR URL and click "Enqueue". It instantly appears at the top of the queue for the whole team.
+1. **Enqueue (Dev A):** Set a username, paste a PR URL, and click Enqueue. The card appears for the whole team with `by {username}` and the created time.
 
-2. 👀 Review & Clear (Dev B): Click "Review" to check the code. Once finished, click "✅ Done". The PR disappears from your personal view (but remains for teammates who haven't reviewed it yet).
+2. **Review & Done Review (Dev B):** Click Review to open the PR. When finished, click Done Review. The card disappears from Dev B’s queue and shows `REVIEWED` plus `reviewed by {Dev B}` for the author.
 
-3. 🔔 Notify Update (Dev A): After fixing the requested changes, click "🔔 Notify Update" on your PR.
+3. **Notify (Dev A):** After applying the requested changes, click Notify on your own PR. Only the author sees this button.
 
-4. 🔄 The Ping (Dev B): The PR automatically reappears in the reviewers' queues, and they receive a native desktop notification that it's ready for a second look.
+4. **The ping (Dev B):** The card reappears in reviewers’ queues as `NEEDS REVIEW`. Reviewers who do not have Do Not Disturb on get a native desktop notification. The person who clicked Notify does not get that toast.
 
-5. 🗑️ Clean Up (Dev A): Once the PR is approved and merged, click "🗑️ Delete" to remove it globally for everyone.
+5. **Reminders:** If other people’s PRs are still waiting, Chrome reminds you on the interval you chose (5 minutes and up). Reminders skip when Do Not Disturb is on, and they skip if the only waiting PRs are yours.
+
+6. **Clean up (Dev A):** After the PR is approved and merged, click Delete. Only the author can remove the card for everyone.
+
+## Settings
+
+| Setting | Behavior |
+| --- | --- |
+| Username | Saved in this browser. Used as the author on cards you enqueue and as the reviewer name on Done Review. |
+| Do Not Disturb | Pauses reminder and ping notifications on this machine. |
+| Remind me every X mins | 5, 10, 15, 30, or 60. Fires only when teammates have `OPEN` or `NEEDS REVIEW` PRs you have not marked reviewed. |
+
+Team ID is not shown yet. This extension is not for more than one team, it assumes that all devs uses the same DB for the team.
+
+## Notifications
+
+Desktop toasts are real OS notifications from the extension service worker (`chrome.notifications`), not in-popup alerts.
+
+- **Reminders:** “Time to check the queue!” when other people’s PRs are waiting.
+- **Notify / ping:** Reviewers are told a PR is ready for another look. The clicker and the PR author are not toasted for that ping. Do Not Disturb skips both kinds of toast.
+
+Grant Chrome notification permission for the extension if macOS or Chrome does not show them.
 
 ## Setup
 
@@ -63,7 +100,7 @@ Run the Vite development server:
 npm run dev
 ```
 
-The development page is useful for UI work, but opening review links in new tabs requires the loaded browser extension.
+The development page is useful for UI work, but opening review links in new tabs, desktop notifications, and reminder alarms require the loaded browser extension.
 
 ## Build and load the extension
 
@@ -83,6 +120,8 @@ The extension is generated in `dist/`. To load it in Chrome:
 
 After changing source files, run `npm run build` and use **Reload** on the extension card.
 
+If Chrome reports that it could not load `icon-128.png`, the file in `public/` is not a real PNG. Replace it with a 128×128 PNG and rebuild.
+
 ## Tests
 
 Run the test suite with:
@@ -99,9 +138,14 @@ npm run build
 
 ## Project structure
 
-- `src/App.tsx`: popup UI, queue rendering, optimistic enqueue/delete behavior, and realtime queue updates.
-- `services/db.ts`: Supabase reads, writes, row mapping, and Realtime subscriptions.
-- `utils/storage.ts`: Chrome storage wrapper for user preferences.
+- `src/App.tsx`: popup UI, username and reminder settings, role-based actions, optimistic enqueue/delete, and realtime queue updates.
+- `src/background.ts`: service worker for reminder alarms, ping subscriptions, and desktop notifications.
+- `services/db.ts`: Supabase reads, writes, ping (reset reviewers to needs-review), row mapping, and Realtime subscriptions.
+- `utils/reminders.ts`: alarm scheduling and “pending reviews from others” counting.
+- `utils/ping.ts`: local ping suppression and reviewer toast helpers.
+- `utils/storage.ts`: Chrome storage wrapper for user preferences, with localStorage fallback.
 - `types/`: shared TypeScript models.
-- `public/manifest.json`: Manifest V3 extension configuration.
+- `public/manifest.json`: Manifest V3 configuration (storage, notifications, alarms, icons).
+- `public/icon-128.png`: toolbar and notification icon (must be a real 128×128 PNG).
+- `public/Quick View of The Extension.png` and `public/Notification View on MacOS.png`: README screenshots.
 - `SUPABASE_SETUP.md`: database schema, environment variables, and Realtime setup.
