@@ -267,23 +267,6 @@ function App() {
   }
 
   const renderQueueActions = (item: QueueItem) => {
-    const isAuthor = item.author_id === preferences.userId
-
-    if (isAuthor) {
-      return (
-        <>
-          <PingButton prId={item.id} onPing={triggerPing} />
-          <button
-            type="button"
-            onClick={() => void deleteQueueItem(item.id)}
-            className="rounded-md border border-red-500 px-2 py-1 text-xs text-red-300"
-          >
-            Delete
-          </button>
-        </>
-      )
-    }
-
     return (
       <>
         <button
@@ -299,6 +282,14 @@ function App() {
           className="rounded-md bg-emerald-600 px-2 py-1 text-xs text-white"
         >
           Done Review
+        </button>
+        <PingButton prId={item.id} onPing={triggerPing} />
+        <button
+          type="button"
+          onClick={() => void deleteQueueItem(item.id)}
+          className="rounded-md border border-red-500 px-2 py-1 text-xs text-red-300"
+        >
+          Delete
         </button>
       </>
     )
@@ -407,7 +398,7 @@ function App() {
                   {item.status}
                 </span>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 {renderQueueActions(item)}
               </div>
             </li>
