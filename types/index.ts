@@ -1,6 +1,8 @@
 export type UserPreferences = {
   userId: string
   teamId: string
+  reminderInterval: number
+  isDndActive: boolean
 }
 
 export type PullRequest = {
@@ -9,8 +11,9 @@ export type PullRequest = {
   title?: string
   authorId: string
   teamId: string
-  status: 'OPEN' | 'MERGED'
+  status: 'OPEN' | 'REVIEWED' | 'NEEDS REVIEW' | 'MERGED'
   createdAt: number
+  lastPingedAt?: number
 }
 
 export type UserInteraction = {

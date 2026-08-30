@@ -18,6 +18,8 @@ describe('Storage utilities', () => {
       const mockPrefs = {
         userId: 'user-1',
         teamId: 'team-1',
+        reminderInterval: 30,
+        isDndActive: true,
       }
 
       mockChromeStorage.get.mockImplementation((key: string, callback: Function) => {
@@ -51,13 +53,48 @@ describe('Storage utilities', () => {
 
     it('should return null when chrome.storage is unavailable', async () => {
       const originalChrome = globalThis.chrome
+      const originalGetItem = globalThis.localStorage?.getItem
       // @ts-expect-error test environment simulates missing extension API
       delete globalThis.chrome
+      globalThis.localStorage = {
+        ...globalThis.localStorage,
+        getItem: () => null,
+      } as Storage
 
       await expect(getUserPreferences()).resolves.toBeNull()
 
       if (originalChrome) {
         globalThis.chrome = originalChrome
+      }
+      if (originalGetItem && globalThis.localStorage) {
+        globalThis.localStorage.getItem = originalGetItem
+      }
+    })
+
+    it('should read preferences from localStorage when chrome.storage is unavailable', async () => {
+      const originalChrome = globalThis.chrome
+      const mockPrefs = {
+        userId: 'Developer 4',
+        teamId: 'demo-team',
+        reminderInterval: 15,
+        isDndActive: false,
+      }
+      // @ts-expect-error test environment simulates missing extension API
+      delete globalThis.chrome
+      const originalGetItem = globalThis.localStorage?.getItem
+      globalThis.localStorage = {
+        ...globalThis.localStorage,
+        getItem: (key: string) =>
+          key === 'nextReview.userPreferences' ? JSON.stringify(mockPrefs) : null,
+      } as Storage
+
+      await expect(getUserPreferences()).resolves.toEqual(mockPrefs)
+
+      if (originalChrome) {
+        globalThis.chrome = originalChrome
+      }
+      if (originalGetItem && globalThis.localStorage) {
+        globalThis.localStorage.getItem = originalGetItem
       }
     })
   })
@@ -67,6 +104,8 @@ describe('Storage utilities', () => {
       const mockPrefs = {
         userId: 'user-1',
         teamId: 'team-1',
+        reminderInterval: 15,
+        isDndActive: false,
       }
 
       mockChromeStorage.set.mockImplementation(
@@ -92,15 +131,24 @@ describe('Storage utilities', () => {
 
     it('should resolve without error when chrome.storage is unavailable', async () => {
       const originalChrome = globalThis.chrome
+      const originalSetItem = globalThis.localStorage?.setItem
       // @ts-expect-error test environment simulates missing extension API
       delete globalThis.chrome
+      const setItem = vi.fn()
+      globalThis.localStorage = {
+        ...globalThis.localStorage,
+        setItem,
+      } as Storage
 
-      await expect(
-        setUserPreferences({ userId: 'user-1', teamId: 'team-1' }),
-      ).resolves.toBeUndefined()
+      const prefs = { userId: 'Developer 4', teamId: 'demo-team', reminderInterval: 15, isDndActive: false }
+      await expect(setUserPreferences(prefs)).resolves.toBeUndefined()
+      expect(setItem).toHaveBeenCalledWith('nextReview.userPreferences', JSON.stringify(prefs))
 
       if (originalChrome) {
         globalThis.chrome = originalChrome
+      }
+      if (originalSetItem && globalThis.localStorage) {
+        globalThis.localStorage.setItem = originalSetItem
       }
     })
   })
