@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { DatabaseService } from '../services/db'
 import type { PullRequest, UserInteraction, UserPreferences } from '../types'
 import { suppressLocalPingNotification } from '../utils/ping'
+import { syncReminderAlarm } from '../utils/reminders'
 import { getUserPreferences, setUserPreferences } from '../utils/storage'
 
 type QueueItem = {
@@ -11,6 +12,8 @@ type QueueItem = {
   url: string
   author_id: string
   status: PullRequest['status']
+  reviewedBy: string[]
+  createdAt: number
 }
 
 // TODO: Restore per-team settings when multiple teams share one database.
@@ -53,6 +56,19 @@ export const createQueueTitle = (id: string, url?: string) => {
   return `PR: ${tail.join(' / ')}`
 }
 
+export const formatQueueCreatedAt = (createdAt: number) => {
+  if (!Number.isFinite(createdAt) || createdAt <= 0) {
+    return ''
+  }
+
+  return new Date(createdAt).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
 export const createQueueDisplayTitle = (title: string | undefined, url: string) => {
   const trimmedTitle = title?.trim()
   if (trimmedTitle) {
@@ -85,6 +101,23 @@ export const resolveQueueStatus = (
   }
 
   return pr.status === 'NEEDS REVIEW' ? 'OPEN' : pr.status
+}
+
+export const listReviewedBy = (
+  pr: Pick<PullRequest, 'id' | 'authorId'>,
+  interactions: UserInteraction[],
+) => {
+  const reviewers = interactions
+    .filter(
+      (interaction) =>
+        interaction.prId === pr.id &&
+        interaction.status === 'REVIEWED' &&
+        interaction.userId.trim().length > 0 &&
+        interaction.userId !== pr.authorId,
+    )
+    .map((interaction) => interaction.userId)
+
+  return [...new Set(reviewers)]
 }
 
 export const filterPendingQueue = (
@@ -214,6 +247,7 @@ function App() {
 
     console.info('[Next Review] Persisting preferences', preferences)
     void setUserPreferences(preferences)
+    void syncReminderAlarm(preferences.reminderInterval)
   }, [hasLoadedPreferences, preferences])
 
   useEffect(() => {
@@ -229,6 +263,8 @@ function App() {
           url: pr.url,
           author_id: pr.authorId,
           status: resolveQueueStatus(pr, interactions),
+          reviewedBy: listReviewedBy(pr, interactions),
+          createdAt: pr.createdAt,
         }))
 
         console.info('[Next Review] Queue updated from Supabase', nextQueue)
@@ -254,6 +290,8 @@ function App() {
       url,
       author_id: preferences.userId,
       status: 'OPEN',
+      reviewedBy: [],
+      createdAt: Date.now(),
     }
 
     setQueue((current) => appendQueueItem(current, optimisticItem))
@@ -266,6 +304,8 @@ function App() {
       url: pr.url,
       author_id: pr.authorId,
       status: pr.status,
+      reviewedBy: [],
+      createdAt: pr.createdAt,
     }
 
     setQueue((current) => replaceQueueItem(current, optimisticItem.id, queueItem))
@@ -280,6 +320,11 @@ function App() {
   }
 
   const triggerPing = async (prId: string) => {
+    const item = queue.find((queueItem) => queueItem.id === prId)
+    if (!item || item.author_id !== preferences.userId) {
+      return
+    }
+
     await suppressLocalPingNotification(prId)
     await databaseService.triggerPing(prId)
     setQueue((current) =>
@@ -288,8 +333,12 @@ function App() {
   }
 
   const deleteQueueItem = async (id: string) => {
-    console.info('[Next Review] Delete queue item clicked', { id, userId: preferences.userId })
     const deletedItem = queue.find((item) => item.id === id)
+    if (!deletedItem || deletedItem.author_id !== preferences.userId) {
+      return
+    }
+
+    console.info('[Next Review] Delete queue item clicked', { id, userId: preferences.userId })
     setQueue((current) => removeQueueItem(current, id))
 
     try {
@@ -346,14 +395,18 @@ function App() {
             </button>
           </>
         )}
-        <PingButton prId={item.id} onPing={triggerPing} />
-        <button
-          type="button"
-          onClick={() => void deleteQueueItem(item.id)}
-          className="rounded-md border border-red-500 px-2 py-1 text-xs text-red-300"
-        >
-          Delete
-        </button>
+        {isPublisher && (
+          <>
+            <PingButton prId={item.id} onPing={triggerPing} />
+            <button
+              type="button"
+              onClick={() => void deleteQueueItem(item.id)}
+              className="rounded-md border border-red-500 px-2 py-1 text-xs text-red-300"
+            >
+              Delete
+            </button>
+          </>
+        )}
       </>
     )
   }
@@ -462,6 +515,7 @@ function App() {
           }
           className="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none ring-emerald-500 focus:ring"
         >
+          <option value={5}>5 minutes</option>
           <option value={10}>10 minutes</option>
           <option value={15}>15 minutes</option>
           <option value={30}>30 minutes</option>
@@ -473,8 +527,23 @@ function App() {
         <ul className="space-y-2">
           {queue.map((item) => (
             <li key={item.id} className="rounded-md border border-slate-800 bg-slate-900 p-3">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <p className="text-sm font-medium">{item.title}</p>
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">{item.title}</p>
+                  {item.author_id ? (
+                    <p className="mt-1 text-xs text-slate-400">by {item.author_id}</p>
+                  ) : null}
+                  {item.createdAt > 0 ? (
+                    <p className="mt-1 text-xs text-slate-400">
+                      created {formatQueueCreatedAt(item.createdAt)}
+                    </p>
+                  ) : null}
+                  {item.reviewedBy.length > 0 ? (
+                    <p className="mt-1 text-xs text-slate-400">
+                      reviewed by {item.reviewedBy.join(', ')}
+                    </p>
+                  ) : null}
+                </div>
                 <span
                   className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold uppercase tracking-wide ${
                     item.status === 'OPEN'

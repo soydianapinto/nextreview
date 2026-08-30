@@ -24,6 +24,7 @@ export interface DatabaseServiceContract {
   triggerPing: (prId: string) => Promise<void>
   markAsReviewed: (prId: string, userId: string) => Promise<void>
   deletePR: (prId: string) => Promise<void>
+  getTeamQueue: (teamId: string) => Promise<{ prs: PullRequest[]; interactions: UserInteraction[] }>
   subscribeToTeamQueue: (
     teamId: string,
     callback: (prs: PullRequest[], interactions: UserInteraction[]) => void,
@@ -177,6 +178,40 @@ export class DatabaseService implements DatabaseServiceContract {
     }
   }
 
+  async getTeamQueue(teamId: string): Promise<{ prs: PullRequest[]; interactions: UserInteraction[] }> {
+    const { data: prs, error: prsError } = await supabase
+      .from('prs')
+      .select('id, url, title, author_id, team_id, status, created_at, last_pinged_at')
+      .eq('team_id', teamId)
+
+    if (prsError) {
+      console.error('[Next Review] Error fetching PRs from Supabase:', prsError)
+      throw prsError
+    }
+
+    const mappedPrs = ((prs ?? []) as Record<string, unknown>[]).map(mapPrRow)
+    const prIds = mappedPrs.map((pr) => pr.id)
+
+    if (prIds.length === 0) {
+      return { prs: [], interactions: [] }
+    }
+
+    const { data: interactions, error: interactionsError } = await supabase
+      .from('interactions')
+      .select('pr_id, user_id, status, updated_at')
+      .in('pr_id', prIds)
+
+    if (interactionsError) {
+      console.error('[Next Review] Error fetching interactions from Supabase:', interactionsError)
+      throw interactionsError
+    }
+
+    return {
+      prs: mappedPrs,
+      interactions: ((interactions ?? []) as Record<string, unknown>[]).map(mapInteractionRow),
+    }
+  }
+
   subscribeToTeamQueue(
     teamId: string,
     callback: (prs: PullRequest[], interactions: UserInteraction[]) => void,
@@ -213,50 +248,12 @@ export class DatabaseService implements DatabaseServiceContract {
       console.info('[Next Review] Fetching team queue from Supabase', { teamId })
 
       try {
-        const { data: prs, error: prsError } = await supabase
-          .from('prs')
-          .select('id, url, title, author_id, team_id, status, created_at, last_pinged_at')
-          .eq('team_id', teamId)
-
-        if (prsError) {
-          console.error('[Next Review] Error fetching PRs from Supabase:', prsError)
-          return
-        }
-
-        const mappedPrs = ((prs ?? []) as Record<string, unknown>[]).map(mapPrRow)
-        cachePingTimestamps(mappedPrs)
-        const prIds = mappedPrs.map((pr) => pr.id)
-        console.info('[Next Review] PRs fetched for team', { teamId, count: prIds.length, prIds })
-
-        if (prIds.length === 0) {
-          if (isSubscribed) {
-            console.info('[Next Review] No PRs found for team, notifying empty queue', { teamId })
-            callback([], [])
-          }
-          return
-        }
-
-        const { data: interactions, error: interactionsError } = await supabase
-          .from('interactions')
-          .select('pr_id, user_id, status, updated_at')
-          .in('pr_id', prIds)
-
-        if (interactionsError) {
-          console.error('[Next Review] Error fetching interactions from Supabase:', interactionsError)
-          return
-        }
-
-        const safePrs = mappedPrs || []
-        const safeInteractions = ((interactions ?? []) as Record<string, unknown>[]).map(mapInteractionRow)
-
-        console.info('[Next Review] Team queue data ready', {
-          teamId,
-          prs: safePrs,
-          interactions: safeInteractions,
-        })
+        const { prs, interactions } = await this.getTeamQueue(teamId)
+        cachePingTimestamps(prs)
+        console.info('[Next Review] Team queue data ready', { teamId, prs, interactions })
 
         if (isSubscribed) {
-          callback(safePrs, safeInteractions)
+          callback(prs, interactions)
         }
       } catch (error) {
         console.error('[Next Review] Failed to fetch team queue:', error)

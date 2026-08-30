@@ -5,11 +5,19 @@ import {
   shouldNotifyForPing,
   showReviewerPingNotification,
 } from '../utils/ping'
+import {
+  countPendingReviewsFromOthers,
+  PR_REMINDER_ALARM,
+  resolveReminderInterval,
+  shouldClearReminderAlarm,
+  syncReminderAlarm,
+} from '../utils/reminders'
 import { getUserPreferences } from '../utils/storage'
+
+export { PR_REMINDER_ALARM, resolveReminderInterval, shouldClearReminderAlarm, syncReminderAlarm }
 
 const PREFERENCES_STORAGE_KEY = 'nextReview.userPreferences'
 
-export const PR_REMINDER_ALARM = 'pr-reminder'
 export const PING_KEEPALIVE_ALARM = 'pr-ping-keepalive'
 
 const databaseService = new DatabaseService()
@@ -19,18 +27,6 @@ type StoredPreferences = {
   reminderInterval?: unknown
   isDndActive?: unknown
 }
-
-export const resolveReminderInterval = (value: unknown): number | null => {
-  if (value == null || value === '') {
-    return null
-  }
-
-  const interval = typeof value === 'number' ? value : Number(value)
-  return Number.isFinite(interval) ? interval : null
-}
-
-export const shouldClearReminderAlarm = (interval: number | null) =>
-  interval == null || interval <= 0
 
 const readPreferencesBag = (value: unknown): StoredPreferences | undefined => {
   if (typeof value !== 'object' || value == null) {
@@ -64,19 +60,6 @@ export const reminderIntervalFromChanges = (
   }
 
   return nextInterval
-}
-
-export const syncReminderAlarm = async (interval: number | null) => {
-  if (!globalThis.chrome?.alarms) {
-    return
-  }
-
-  if (interval == null || interval <= 0) {
-    await chrome.alarms.clear(PR_REMINDER_ALARM)
-    return
-  }
-
-  await chrome.alarms.create(PR_REMINDER_ALARM, { periodInMinutes: interval })
 }
 
 export const initializeReminderAlarm = async () => {
@@ -131,24 +114,35 @@ export const startPingSubscription = async () => {
 }
 
 export const handleReminderAlarm = async (alarm: chrome.alarms.Alarm) => {
-  if (alarm.name !== PR_REMINDER_ALARM || !globalThis.chrome?.storage?.local) {
+  if (alarm.name !== PR_REMINDER_ALARM) {
     return
   }
 
-  const result = await chrome.storage.local.get(['isDndActive', PREFERENCES_STORAGE_KEY])
-  const storedPreferences = readPreferencesBag(result[PREFERENCES_STORAGE_KEY])
-  const isDndActive = result.isDndActive === true || storedPreferences?.isDndActive === true
-
-  if (isDndActive) {
+  const preferences = await getUserPreferences()
+  if (preferences?.isDndActive) {
     return
   }
 
-  await chrome.notifications.create({
-    type: 'basic',
-    iconUrl: 'icon-128.png',
-    title: 'Next Review',
-    message: 'Time to check the queue! You have pending reviews.',
-  })
+  try {
+    const { prs, interactions } = await databaseService.getTeamQueue(preferences?.teamId ?? 'demo-team')
+    const pendingCount = countPendingReviewsFromOthers(prs, interactions, preferences?.userId ?? '')
+
+    if (pendingCount === 0) {
+      return
+    }
+
+    await chrome.notifications.create({
+      type: 'basic',
+      iconUrl: 'icon-128.png',
+      title: 'Next Review',
+      message:
+        pendingCount === 1
+          ? 'Time to check the queue! You have 1 PR waiting for review.'
+          : `Time to check the queue! You have ${pendingCount} PRs waiting for review.`,
+    })
+  } catch (error) {
+    console.error('[Next Review] Reminder alarm failed', error)
+  }
 }
 
 export const onStorageChanged = (

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { DatabaseService } from '../services/db'
 import {
   handleIncomingPing,
   handleReminderAlarm,
@@ -31,6 +32,7 @@ const mockChrome = {
   alarms: {
     create: vi.fn(),
     clear: vi.fn(),
+    get: vi.fn(),
     onAlarm: {
       addListener: vi.fn(),
     },
@@ -49,6 +51,7 @@ describe('background reminder scheduling', () => {
     vi.clearAllMocks()
     mockChrome.alarms.create.mockResolvedValue(undefined)
     mockChrome.alarms.clear.mockResolvedValue(true)
+    mockChrome.alarms.get.mockResolvedValue(undefined)
     mockChrome.notifications.create.mockResolvedValue('notification-id')
     mockChrome.storage.session.get.mockResolvedValue({})
     mockChrome.storage.local.get.mockImplementation((_key: string, callback?: (result: Record<string, unknown>) => void) => {
@@ -107,6 +110,7 @@ describe('background reminder scheduling', () => {
     await syncReminderAlarm(15)
 
     expect(mockChrome.alarms.create).toHaveBeenCalledWith(PR_REMINDER_ALARM, {
+      delayInMinutes: 15,
       periodInMinutes: 15,
     })
     expect(mockChrome.alarms.clear).not.toHaveBeenCalled()
@@ -121,11 +125,14 @@ describe('background reminder scheduling', () => {
     expect(mockChrome.alarms.create).not.toHaveBeenCalled()
   })
 
-  it('schedules the alarm when reminderInterval changes in storage', () => {
+  it('schedules the alarm when reminderInterval changes in storage', async () => {
     onStorageChanged({ reminderInterval: { newValue: 30 } }, 'local')
 
-    expect(mockChrome.alarms.create).toHaveBeenCalledWith(PR_REMINDER_ALARM, {
-      periodInMinutes: 30,
+    await vi.waitFor(() => {
+      expect(mockChrome.alarms.create).toHaveBeenCalledWith(PR_REMINDER_ALARM, {
+        delayInMinutes: 30,
+        periodInMinutes: 30,
+      })
     })
   })
 
@@ -148,13 +155,18 @@ describe('background reminder scheduling', () => {
       'nextReview.userPreferences',
     ])
     expect(mockChrome.alarms.create).toHaveBeenCalledWith(PR_REMINDER_ALARM, {
+      delayInMinutes: 15,
       periodInMinutes: 15,
     })
   })
 
   it('does not notify when Do Not Disturb is active', async () => {
-    mockChrome.storage.local.get.mockResolvedValue({
-      'nextReview.userPreferences': { isDndActive: true },
+    mockChrome.storage.local.get.mockImplementation((_key: string, callback?: (result: Record<string, unknown>) => void) => {
+      const result = {
+        'nextReview.userPreferences': { isDndActive: true, userId: 'me', teamId: 'demo-team', reminderInterval: 5 },
+      }
+      callback?.(result)
+      return Promise.resolve(result)
     })
 
     await handleReminderAlarm({ name: PR_REMINDER_ALARM, scheduledTime: Date.now() })
@@ -162,9 +174,31 @@ describe('background reminder scheduling', () => {
     expect(mockChrome.notifications.create).not.toHaveBeenCalled()
   })
 
-  it('creates a queue reminder notification when Do Not Disturb is off', async () => {
-    mockChrome.storage.local.get.mockResolvedValue({
-      'nextReview.userPreferences': { isDndActive: false },
+  it('creates a queue reminder notification when other developers have waiting PRs', async () => {
+    mockChrome.storage.local.get.mockImplementation((_key: string, callback?: (result: Record<string, unknown>) => void) => {
+      const result = {
+        'nextReview.userPreferences': {
+          isDndActive: false,
+          userId: 'me',
+          teamId: 'demo-team',
+          reminderInterval: 5,
+        },
+      }
+      callback?.(result)
+      return Promise.resolve(result)
+    })
+    vi.spyOn(DatabaseService.prototype, 'getTeamQueue').mockResolvedValue({
+      prs: [
+        {
+          id: 'pr-1',
+          url: 'https://example.com/pr/1',
+          authorId: 'dev-a',
+          teamId: 'demo-team',
+          status: 'OPEN',
+          createdAt: Date.now(),
+        },
+      ],
+      interactions: [],
     })
 
     await handleReminderAlarm({ name: PR_REMINDER_ALARM, scheduledTime: Date.now() })
@@ -173,7 +207,7 @@ describe('background reminder scheduling', () => {
       type: 'basic',
       iconUrl: 'icon-128.png',
       title: 'Next Review',
-      message: 'Time to check the queue! You have pending reviews.',
+      message: 'Time to check the queue! You have 1 PR waiting for review.',
     })
   })
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { appendQueueItem, createQueueDisplayTitle, createQueueTitle, createRandomUsername, needsGeneratedUsername, openReviewTab, replaceQueueItem, resolveUsername } from './App'
+import { appendQueueItem, createQueueDisplayTitle, createQueueTitle, createRandomUsername, formatQueueCreatedAt, needsGeneratedUsername, openReviewTab, replaceQueueItem, resolveUsername } from './App'
 
 describe('createQueueTitle', () => {
   it('prefers the PR id when available', () => {
@@ -31,6 +31,11 @@ describe('createQueueTitle', () => {
     const insertedItem = { id: 'pr-1', title: 'PR: pr-1', url: optimisticItem.url, status: 'OPEN' as const }
 
     expect(replaceQueueItem([optimisticItem], optimisticItem.id, insertedItem)).toEqual([insertedItem])
+  })
+
+  it('formats a PR created time for the card', () => {
+    expect(formatQueueCreatedAt(0)).toBe('')
+    expect(formatQueueCreatedAt(Date.parse('2026-08-30T15:33:00'))).toMatch(/Aug/)
   })
 
   it('does nothing when a review URL is empty', () => {
