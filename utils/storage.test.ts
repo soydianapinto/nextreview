@@ -18,6 +18,8 @@ describe('Storage utilities', () => {
       const mockPrefs = {
         userId: 'user-1',
         teamId: 'team-1',
+        reminderInterval: 30,
+        isDndActive: true,
       }
 
       mockChromeStorage.get.mockImplementation((key: string, callback: Function) => {
@@ -67,6 +69,8 @@ describe('Storage utilities', () => {
       const mockPrefs = {
         userId: 'user-1',
         teamId: 'team-1',
+        reminderInterval: 15,
+        isDndActive: false,
       }
 
       mockChromeStorage.set.mockImplementation(
@@ -96,7 +100,7 @@ describe('Storage utilities', () => {
       delete globalThis.chrome
 
       await expect(
-        setUserPreferences({ userId: 'user-1', teamId: 'team-1' }),
+        setUserPreferences({ userId: 'user-1', teamId: 'team-1', reminderInterval: 15, isDndActive: false }),
       ).resolves.toBeUndefined()
 
       if (originalChrome) {

@@ -7,11 +7,13 @@ describe('UserPreferences type', () => {
     const prefs: UserPreferences = {
       userId: 'user-123',
       teamId: 'team-456',
+      reminderInterval: 15,
       isDndActive: false,
     }
 
     expect(prefs.userId).toBeDefined()
     expect(prefs.teamId).toBeDefined()
+    expect(prefs.reminderInterval).toBe(15)
     expect(prefs.isDndActive).toBeDefined()
   })
 
@@ -19,10 +21,12 @@ describe('UserPreferences type', () => {
     const prefs: UserPreferences = {
       userId: 'user-1',
       teamId: 'team-1',
+      reminderInterval: 30,
       isDndActive: true,
     }
 
     expect(typeof prefs.isDndActive).toBe('boolean')
+    expect(typeof prefs.reminderInterval).toBe('number')
   })
 })
 

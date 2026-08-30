@@ -15,6 +15,8 @@ type QueueItem = {
 const defaultPreferences: UserPreferences = {
   userId: 'demo-user',
   teamId: 'demo-team',
+  reminderInterval: 15,
+  isDndActive: false,
 }
 
 export const createQueueTitle = (id: string, url?: string) => {
@@ -136,7 +138,7 @@ function App() {
 
       if (savedPreferences) {
         console.info('[Next Review] Saved preferences loaded', savedPreferences)
-        setPreferences(savedPreferences)
+        setPreferences({ ...defaultPreferences, ...savedPreferences })
       } else {
         console.info('[Next Review] No saved preferences found, using defaults', defaultPreferences)
       }
@@ -175,7 +177,7 @@ function App() {
         setQueue(nextQueue)
       },
       (pr) => {
-        if (globalThis.chrome?.notifications) {
+        if (!preferences.isDndActive && globalThis.chrome?.notifications) {
           void globalThis.chrome.notifications.create({
             type: 'basic',
             iconUrl: 'icon-128.png',
@@ -188,7 +190,7 @@ function App() {
     )
 
     return unsubscribe
-  }, [preferences.teamId, preferences.userId])
+  }, [preferences.teamId, preferences.userId, preferences.isDndActive])
 
   const canEnqueue = useMemo(() => prUrl.trim().length > 0, [prUrl])
 
@@ -318,7 +320,7 @@ function App() {
         <input
           value={prTitle}
           onChange={(event) => setPrTitle(event.target.value)}
-          placeholder="PR Title / Context (optional)"
+          placeholder="PR/MR Title (optional)"
           className="min-w-0 rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none ring-emerald-500 focus:ring"
         />
         <button
@@ -329,6 +331,64 @@ function App() {
         >
           Enqueue
         </button>
+      </section>
+
+      <section className="mb-4 rounded-md border border-slate-800 bg-slate-900 p-3">
+        <h2 className="mb-3 text-sm font-semibold text-slate-200">Settings</h2>
+        <label
+          htmlFor="dnd-toggle"
+          className="flex cursor-pointer items-center justify-between gap-3 rounded-md px-0.5 py-1"
+        >
+          <span>
+            <span className="block text-sm font-medium text-slate-200">Do Not Disturb</span>
+            <span className="mt-0.5 block text-xs text-slate-400">
+              {preferences.isDndActive ? 'Reminders are paused' : 'Reminders are on'}
+            </span>
+          </span>
+          <span className="relative inline-flex shrink-0 items-center">
+            <input
+              id="dnd-toggle"
+              type="checkbox"
+              role="switch"
+              aria-checked={preferences.isDndActive}
+              checked={preferences.isDndActive}
+              onChange={(event) =>
+                setPreferences((current) => ({
+                  ...current,
+                  isDndActive: event.target.checked,
+                }))
+              }
+              className="peer sr-only"
+            />
+            <span
+              aria-hidden="true"
+              className="h-6 w-11 rounded-full bg-slate-700 transition-colors peer-checked:bg-emerald-500 peer-focus-visible:ring-2 peer-focus-visible:ring-emerald-400 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-slate-900"
+            />
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute left-0.5 top-1/2 h-5 w-5 -translate-y-1/2 rounded-full bg-white shadow transition-transform peer-checked:translate-x-5 peer-checked:-translate-y-1/2"
+            />
+          </span>
+        </label>
+        <label htmlFor="reminder-interval" className="mt-3 block text-sm text-slate-300">
+          Remind me every X mins
+        </label>
+        <select
+          id="reminder-interval"
+          value={preferences.reminderInterval}
+          onChange={(event) =>
+            setPreferences((current) => ({
+              ...current,
+              reminderInterval: Number(event.target.value),
+            }))
+          }
+          className="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none ring-emerald-500 focus:ring"
+        >
+          <option value={10}>10 minutes</option>
+          <option value={15}>15 minutes</option>
+          <option value={30}>30 minutes</option>
+          <option value={60}>60 minutes</option>
+        </select>
       </section>
 
       <section>

@@ -1,6 +1,8 @@
 export type UserPreferences = {
   userId: string
   teamId: string
+  reminderInterval: number
+  isDndActive: boolean
 }
 
 export type PullRequest = {
