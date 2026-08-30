@@ -1,10 +1,21 @@
 import { resolve } from 'node:path'
 import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
+
+const chromeExtensionHtml = (): Plugin => ({
+  name: 'chrome-extension-html',
+  apply: 'build',
+  transformIndexHtml(html) {
+    return html.replaceAll(' crossorigin', '')
+  },
+})
 
 export default defineConfig({
-  plugins: [react()],
+  base: './',
+  plugins: [react(), chromeExtensionHtml()],
   build: {
+    sourcemap: false,
+    modulePreload: false,
     rollupOptions: {
       input: {
         popup: resolve(import.meta.dirname, 'index.html'),

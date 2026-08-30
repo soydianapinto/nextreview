@@ -4,6 +4,10 @@
   "version": "0.1.0",
   "description": "Queue and track pull request reviews with desktop reminders.",
   "permissions": ["storage", "notifications", "activeTab", "alarms"],
+  "host_permissions": ["https://*.supabase.co/*"],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  },
   "background": {
     "service_worker": "background.js",
     "type": "module"

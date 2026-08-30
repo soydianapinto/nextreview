@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { DatabaseService } from '../services/db'
 import type { PullRequest, UserInteraction, UserPreferences } from '../types'
+import { suppressLocalPingNotification } from '../utils/ping'
 import { getUserPreferences, setUserPreferences } from '../utils/storage'
 
 type QueueItem = {
@@ -12,12 +13,26 @@ type QueueItem = {
   status: PullRequest['status']
 }
 
+// TODO: Restore per-team settings when multiple teams share one database.
+// For now everyone on this Supabase project is treated as the same team.
+const SHARED_TEAM_ID = 'demo-team'
+
 const defaultPreferences: UserPreferences = {
   userId: 'demo-user',
-  teamId: 'demo-team',
+  teamId: SHARED_TEAM_ID,
   reminderInterval: 15,
   isDndActive: false,
 }
+
+export const createRandomUsername = () => `Developer ${Math.floor(Math.random() * 999) + 1}`
+
+export const needsGeneratedUsername = (userId?: string) => {
+  const trimmed = userId?.trim() ?? ''
+  return trimmed.length === 0 || trimmed === 'demo-user' || trimmed.startsWith('user-')
+}
+
+export const resolveUsername = (userId?: string) =>
+  needsGeneratedUsername(userId) ? createRandomUsername() : userId?.trim() ?? createRandomUsername()
 
 export const createQueueTitle = (id: string, url?: string) => {
   if (id && id.trim().length > 0) {
@@ -49,6 +64,29 @@ export const createQueueDisplayTitle = (title: string | undefined, url: string) 
   return pathSegments.length > 0 ? pathSegments.join('/') : 'Review queue item'
 }
 
+export const resolveQueueStatus = (
+  pr: PullRequest,
+  interactions: UserInteraction[],
+): PullRequest['status'] => {
+  if (pr.status === 'MERGED') {
+    return 'MERGED'
+  }
+
+  const hasReview = interactions.some(
+    (interaction) => interaction.prId === pr.id && interaction.status === 'REVIEWED',
+  )
+
+  if (hasReview) {
+    return 'REVIEWED'
+  }
+
+  if ((pr.lastPingedAt ?? 0) > 0) {
+    return 'NEEDS REVIEW'
+  }
+
+  return pr.status === 'NEEDS REVIEW' ? 'OPEN' : pr.status
+}
+
 export const filterPendingQueue = (
   prs: PullRequest[],
   interactions: UserInteraction[],
@@ -60,7 +98,13 @@ export const filterPendingQueue = (
       .map((interaction) => interaction.prId),
   )
 
-  return prs.filter((pr) => !reviewedPrIds.has(pr.id))
+  return prs.filter((pr) => {
+    if (pr.authorId === userId) {
+      return true
+    }
+
+    return !reviewedPrIds.has(pr.id)
+  })
 }
 
 export const appendQueueItem = <T extends { id: string }>(queue: T[], item: T) => {
@@ -108,6 +152,7 @@ function PingButton({ prId, onPing }: PingButtonProps) {
       window.setTimeout(() => setIsNotified(false), 2000)
     } catch (error) {
       console.error('[Next Review] Ping action failed', { prId, error })
+      globalThis.alert?.('Notify Update failed. Check the extension console for details.')
     }
   }
 
@@ -117,7 +162,7 @@ function PingButton({ prId, onPing }: PingButtonProps) {
       onClick={() => void handlePing()}
       className="rounded-md border border-amber-500 px-2 py-1 text-xs text-amber-300"
     >
-      {isNotified ? '✅ Notified!' : '🔔 Notify Update'}
+      {isNotified ? '✅ Notified!' : '🔔 Notify'}
     </button>
   )
 }
@@ -137,10 +182,23 @@ function App() {
       const savedPreferences = await getUserPreferences()
 
       if (savedPreferences) {
-        console.info('[Next Review] Saved preferences loaded', savedPreferences)
-        setPreferences({ ...defaultPreferences, ...savedPreferences })
+        const nextPreferences = {
+          ...defaultPreferences,
+          ...savedPreferences,
+          userId: savedPreferences.userId?.trim()
+            ? savedPreferences.userId.trim()
+            : createRandomUsername(),
+          teamId: SHARED_TEAM_ID,
+        }
+        console.info('[Next Review] Saved preferences loaded', nextPreferences)
+        setPreferences(nextPreferences)
       } else {
-        console.info('[Next Review] No saved preferences found, using defaults', defaultPreferences)
+        const generatedPreferences = {
+          ...defaultPreferences,
+          userId: createRandomUsername(),
+        }
+        console.info('[Next Review] No saved preferences found, using defaults', generatedPreferences)
+        setPreferences(generatedPreferences)
       }
 
       setHasLoadedPreferences(true)
@@ -170,27 +228,16 @@ function App() {
           title: createQueueDisplayTitle(pr.title, pr.url),
           url: pr.url,
           author_id: pr.authorId,
-          status: pr.status,
+          status: resolveQueueStatus(pr, interactions),
         }))
 
         console.info('[Next Review] Queue updated from Supabase', nextQueue)
         setQueue(nextQueue)
       },
-      (pr) => {
-        if (!preferences.isDndActive && globalThis.chrome?.notifications) {
-          void globalThis.chrome.notifications.create({
-            type: 'basic',
-            iconUrl: 'icon-128.png',
-            title: 'PR Update Ready!',
-            message: pr.title || createQueueDisplayTitle(pr.title, pr.url),
-          })
-        }
-      },
-      preferences.userId,
     )
 
     return unsubscribe
-  }, [preferences.teamId, preferences.userId, preferences.isDndActive])
+  }, [preferences.teamId, preferences.userId])
 
   const canEnqueue = useMemo(() => prUrl.trim().length > 0, [prUrl])
 
@@ -232,7 +279,13 @@ function App() {
     openReviewTab(url)
   }
 
-  const triggerPing = (prId: string) => databaseService.triggerPing(prId)
+  const triggerPing = async (prId: string) => {
+    await suppressLocalPingNotification(prId)
+    await databaseService.triggerPing(prId)
+    setQueue((current) =>
+      current.map((item) => (item.id === prId ? { ...item, status: 'NEEDS REVIEW' } : item)),
+    )
+  }
 
   const deleteQueueItem = async (id: string) => {
     console.info('[Next Review] Delete queue item clicked', { id, userId: preferences.userId })
@@ -251,6 +304,10 @@ function App() {
   }
 
   const markQueueItemAsReviewed = async (item: QueueItem) => {
+    if (item.author_id === preferences.userId) {
+      return
+    }
+
     console.info('[Next Review] Mark as reviewed clicked', { prId: item.id, userId: preferences.userId })
     setQueue((current) => removeQueueItem(current, item.id))
 
@@ -267,22 +324,28 @@ function App() {
   }
 
   const renderQueueActions = (item: QueueItem) => {
+    const isPublisher = item.author_id === preferences.userId
+
     return (
       <>
-        <button
-          type="button"
-          onClick={() => openReview(item.url)}
-          className="rounded-md bg-blue-600 px-2 py-1 text-xs text-white"
-        >
-          Review
-        </button>
-        <button
-          type="button"
-          onClick={() => void markQueueItemAsReviewed(item)}
-          className="rounded-md bg-emerald-600 px-2 py-1 text-xs text-white"
-        >
-          Done Review
-        </button>
+        {!isPublisher && (
+          <>
+            <button
+              type="button"
+              onClick={() => openReview(item.url)}
+              className="rounded-md bg-blue-600 px-2 py-1 text-xs text-white"
+            >
+              Review
+            </button>
+            <button
+              type="button"
+              onClick={() => void markQueueItemAsReviewed(item)}
+              className="rounded-md bg-emerald-600 px-2 py-1 text-xs text-white"
+            >
+              Done Review
+            </button>
+          </>
+        )}
         <PingButton prId={item.id} onPing={triggerPing} />
         <button
           type="button"
@@ -305,13 +368,13 @@ function App() {
         <input
           value={prUrl}
           onChange={(event) => setPrUrl(event.target.value)}
-          placeholder="Paste your PR/MR URL"
+          placeholder="URL"
           className="min-w-0 rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none ring-emerald-500 focus:ring"
         />
         <input
           value={prTitle}
           onChange={(event) => setPrTitle(event.target.value)}
-          placeholder="PR/MR Title (optional)"
+          placeholder="Title (optional)"
           className="min-w-0 rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none ring-emerald-500 focus:ring"
         />
         <button
@@ -326,6 +389,30 @@ function App() {
 
       <section className="mb-4 rounded-md border border-slate-800 bg-slate-900 p-3">
         <h2 className="mb-3 text-sm font-semibold text-slate-200">Settings</h2>
+        <label htmlFor="username" className="block text-sm text-slate-300">
+          Username
+        </label>
+        <input
+          id="username"
+          value={preferences.userId}
+          placeholder="Developer 1"
+          onChange={(event) =>
+            setPreferences((current) => ({
+              ...current,
+              userId: event.target.value,
+            }))
+          }
+          onBlur={() =>
+            setPreferences((current) => ({
+              ...current,
+              userId: resolveUsername(current.userId),
+            }))
+          }
+          className="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none ring-emerald-500 focus:ring"
+        />
+        <p className="mt-1 mb-3 text-xs text-slate-500">
+          Use a different username from your reviewer. Leave it blank to get a name like Developer 1.
+        </p>
         <label
           htmlFor="dnd-toggle"
           className="flex cursor-pointer items-center justify-between gap-3 rounded-md px-0.5 py-1"
@@ -392,7 +479,11 @@ function App() {
                   className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold uppercase tracking-wide ${
                     item.status === 'OPEN'
                       ? 'bg-emerald-950 text-emerald-300'
-                      : 'bg-slate-800 text-slate-300'
+                      : item.status === 'REVIEWED'
+                        ? 'bg-amber-950 text-amber-300'
+                        : item.status === 'NEEDS REVIEW'
+                          ? 'bg-sky-950 text-sky-300'
+                          : 'bg-slate-800 text-slate-300'
                   }`}
                 >
                   {item.status}

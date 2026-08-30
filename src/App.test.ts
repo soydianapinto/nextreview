@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { appendQueueItem, createQueueDisplayTitle, createQueueTitle, openReviewTab, replaceQueueItem } from './App'
+import { appendQueueItem, createQueueDisplayTitle, createQueueTitle, createRandomUsername, needsGeneratedUsername, openReviewTab, replaceQueueItem, resolveUsername } from './App'
 
 describe('createQueueTitle', () => {
   it('prefers the PR id when available', () => {
@@ -35,5 +35,16 @@ describe('createQueueTitle', () => {
 
   it('does nothing when a review URL is empty', () => {
     expect(() => openReviewTab('  ')).not.toThrow()
+  })
+
+  it('generates Developer N usernames when none is provided', () => {
+    expect(needsGeneratedUsername(undefined)).toBe(true)
+    expect(needsGeneratedUsername('')).toBe(true)
+    expect(needsGeneratedUsername('demo-user')).toBe(true)
+    expect(needsGeneratedUsername('user-123')).toBe(true)
+    expect(needsGeneratedUsername('Ada')).toBe(false)
+    expect(createRandomUsername()).toMatch(/^Developer [1-9]\d{0,2}$/)
+    expect(resolveUsername('Ada')).toBe('Ada')
+    expect(resolveUsername('  ')).toMatch(/^Developer [1-9]\d{0,2}$/)
   })
 })

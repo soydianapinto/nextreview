@@ -131,14 +131,25 @@ export class DatabaseService implements DatabaseServiceContract {
     console.info('[Next Review] triggerPing called', { prId })
 
     try {
-      const { error } = await supabase
+      const { error: pingError } = await supabase
         .from('prs')
         .update({ last_pinged_at: Date.now() })
         .eq('id', prId)
 
-      if (error) {
-        console.error('[Next Review] Error updating PR ping timestamp:', error)
-        throw error
+      if (pingError) {
+        console.error('[Next Review] Error updating PR ping timestamp:', pingError)
+        throw pingError
+      }
+
+      const { error: resetError } = await supabase
+        .from('interactions')
+        .update({ status: 'PENDING', updated_at: Date.now() })
+        .eq('pr_id', prId)
+        .eq('status', 'REVIEWED')
+
+      if (resetError) {
+        console.error('[Next Review] Error resetting reviewed interactions:', resetError)
+        throw resetError
       }
 
       console.info('[Next Review] triggerPing succeeded', { prId })

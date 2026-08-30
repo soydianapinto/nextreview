@@ -46,6 +46,7 @@ describe('PullRequest type', () => {
     expect(pr.authorId).toBeDefined()
     expect(pr.teamId).toBeDefined()
     expect(pr.status).toBe('OPEN')
+    expect(['OPEN', 'REVIEWED', 'NEEDS REVIEW', 'MERGED']).toContain(pr.status)
     expect(pr.createdAt).toBeGreaterThan(0)
   })
 })

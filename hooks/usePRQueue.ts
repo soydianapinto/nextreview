@@ -21,8 +21,13 @@ export const usePRQueue = (userId: string, teamId: string) => {
             .map((interaction) => interaction.prId),
         )
 
-        // Filter out reviewed PRs, keeping only pending ones
-        const pendingQueue = prs.filter((pr) => !reviewedPrIds.has(pr.id))
+        const pendingQueue = prs.filter((pr) => {
+          if (pr.authorId === userId) {
+            return true
+          }
+
+          return !reviewedPrIds.has(pr.id)
+        })
 
         setQueue(pendingQueue)
         setIsLoading(false)

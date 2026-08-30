@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  handleIncomingPing,
   handleReminderAlarm,
   initializeReminderAlarm,
   PR_REMINDER_ALARM,
@@ -15,6 +16,13 @@ const mockChrome = {
   storage: {
     local: {
       get: vi.fn(),
+      set: vi.fn(),
+      remove: vi.fn(),
+    },
+    session: {
+      get: vi.fn(),
+      set: vi.fn(),
+      remove: vi.fn(),
     },
     onChanged: {
       addListener: vi.fn(),
@@ -42,6 +50,12 @@ describe('background reminder scheduling', () => {
     mockChrome.alarms.create.mockResolvedValue(undefined)
     mockChrome.alarms.clear.mockResolvedValue(true)
     mockChrome.notifications.create.mockResolvedValue('notification-id')
+    mockChrome.storage.session.get.mockResolvedValue({})
+    mockChrome.storage.local.get.mockImplementation((_key: string, callback?: (result: Record<string, unknown>) => void) => {
+      const result = {}
+      callback?.(result)
+      return Promise.resolve(result)
+    })
     vi.stubGlobal('chrome', mockChrome)
   })
 
@@ -161,6 +175,65 @@ describe('background reminder scheduling', () => {
       title: 'Next Review',
       message: 'Time to check the queue! You have pending reviews.',
     })
+  })
+
+  it('notifies a teammate when someone else clicks Notify Update', async () => {
+    mockChrome.storage.local.get.mockImplementation((_key: string, callback?: (result: Record<string, unknown>) => void) => {
+      const result = {
+        'nextReview.userPreferences': {
+          userId: 'reviewer-1',
+          teamId: 'demo-team',
+          reminderInterval: 15,
+          isDndActive: false,
+        },
+      }
+      callback?.(result)
+      return Promise.resolve(result)
+    })
+
+    await handleIncomingPing({
+      id: 'pr-1',
+      url: 'https://example.com/pr/1',
+      title: 'Fix checkout flow',
+      authorId: 'dev-a',
+      teamId: 'demo-team',
+      status: 'OPEN',
+      createdAt: Date.now(),
+    })
+
+    expect(mockChrome.notifications.create).toHaveBeenCalledWith({
+      type: 'basic',
+      iconUrl: 'icon-128.png',
+      title: 'PR Update Ready!',
+      message: 'Fix checkout flow',
+    })
+  })
+
+  it('does not notify the publisher when they click Notify Update', async () => {
+    mockChrome.storage.local.get.mockImplementation((_key: string, callback?: (result: Record<string, unknown>) => void) => {
+      const result = {
+        'nextReview.userPreferences': {
+          userId: 'dev-a',
+          teamId: 'demo-team',
+          reminderInterval: 15,
+          isDndActive: false,
+        },
+      }
+      callback?.(result)
+      return Promise.resolve(result)
+    })
+
+    await handleIncomingPing({
+      id: 'pr-1',
+      url: 'https://example.com/pr/1',
+      title: 'Fix checkout flow',
+      authorId: 'dev-a',
+      teamId: 'demo-team',
+      status: 'OPEN',
+      createdAt: Date.now(),
+    })
+
+    expect(mockChrome.notifications.create).not.toHaveBeenCalled()
   })
 
   it('ignores unrelated alarms', async () => {

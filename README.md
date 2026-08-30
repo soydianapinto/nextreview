@@ -21,15 +21,15 @@ The **ping** (or "Notify Update") is used to **let your team know that you have 
 
 How It Works (The Workflow)
 
-📥 Enqueue (Dev A): Paste your PR URL and click "Enqueue". It instantly appears at the top of the queue for the whole team.
+1. 📥 Enqueue (Dev A): Paste your PR URL and click "Enqueue". It instantly appears at the top of the queue for the whole team.
 
-👀 Review & Clear (Dev B): Click "Review" to check the code. Once finished, click "✅ Done". The PR disappears from your personal view (but remains for teammates who haven't reviewed it yet).
+2. 👀 Review & Clear (Dev B): Click "Review" to check the code. Once finished, click "✅ Done". The PR disappears from your personal view (but remains for teammates who haven't reviewed it yet).
 
-🔔 Notify Update (Dev A): After fixing the requested changes, click "🔔 Notify Update" on your PR.
+3. 🔔 Notify Update (Dev A): After fixing the requested changes, click "🔔 Notify Update" on your PR.
 
-🔄 The Ping (Dev B): The PR automatically reappears in the reviewers' queues, and they receive a native desktop notification that it's ready for a second look.
+4. 🔄 The Ping (Dev B): The PR automatically reappears in the reviewers' queues, and they receive a native desktop notification that it's ready for a second look.
 
-🗑️ Clean Up (Dev A): Once the PR is approved and merged, click "🗑️ Delete" to remove it globally for everyone.
+5. 🗑️ Clean Up (Dev A): Once the PR is approved and merged, click "🗑️ Delete" to remove it globally for everyone.
 
 ## Setup
 

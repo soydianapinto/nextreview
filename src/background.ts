@@ -1,6 +1,19 @@
+import { DatabaseService } from '../services/db'
+import type { PullRequest } from '../types'
+import {
+  consumeLocalPingSuppression,
+  shouldNotifyForPing,
+  showReviewerPingNotification,
+} from '../utils/ping'
+import { getUserPreferences } from '../utils/storage'
+
 const PREFERENCES_STORAGE_KEY = 'nextReview.userPreferences'
 
 export const PR_REMINDER_ALARM = 'pr-reminder'
+export const PING_KEEPALIVE_ALARM = 'pr-ping-keepalive'
+
+const databaseService = new DatabaseService()
+let stopPingSubscription: (() => void) | undefined
 
 type StoredPreferences = {
   reminderInterval?: unknown
@@ -80,6 +93,43 @@ export const initializeReminderAlarm = async () => {
   await syncReminderAlarm(interval)
 }
 
+export const handleIncomingPing = async (pr: PullRequest) => {
+  const preferences = await getUserPreferences()
+  const pingedByCurrentUser = await consumeLocalPingSuppression(pr.id)
+
+  if (
+    !shouldNotifyForPing({
+      isDndActive: preferences?.isDndActive === true,
+      currentUserId: preferences?.userId ?? '',
+      authorId: pr.authorId,
+      pingedByCurrentUser,
+    })
+  ) {
+    return
+  }
+
+  showReviewerPingNotification(pr.title ?? '')
+}
+
+export const startPingSubscription = async () => {
+  stopPingSubscription?.()
+  stopPingSubscription = undefined
+
+  const preferences = await getUserPreferences()
+  if (!preferences?.teamId) {
+    return
+  }
+
+  stopPingSubscription = databaseService.subscribeToTeamQueue(
+    preferences.teamId,
+    () => {},
+    (pr) => {
+      void handleIncomingPing(pr)
+    },
+    preferences.userId,
+  )
+}
+
 export const handleReminderAlarm = async (alarm: chrome.alarms.Alarm) => {
   if (alarm.name !== PR_REMINDER_ALARM || !globalThis.chrome?.storage?.local) {
     return
@@ -110,22 +160,33 @@ export const onStorageChanged = (
   }
 
   const interval = reminderIntervalFromChanges(changes)
-  if (interval === undefined) {
-    return
+  if (interval !== undefined) {
+    void syncReminderAlarm(interval)
   }
 
-  void syncReminderAlarm(interval)
+  if (changes[PREFERENCES_STORAGE_KEY] || changes.teamId || changes.userId) {
+    void startPingSubscription()
+  }
 }
 
 export const registerBackgroundListeners = () => {
   chrome.storage.onChanged.addListener(onStorageChanged)
   chrome.runtime.onInstalled.addListener(() => {
     void initializeReminderAlarm()
+    void chrome.alarms.create(PING_KEEPALIVE_ALARM, { periodInMinutes: 1 })
+    void startPingSubscription()
   })
   chrome.runtime.onStartup.addListener(() => {
     void initializeReminderAlarm()
+    void chrome.alarms.create(PING_KEEPALIVE_ALARM, { periodInMinutes: 1 })
+    void startPingSubscription()
   })
   chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === PING_KEEPALIVE_ALARM) {
+      void startPingSubscription()
+      return
+    }
+
     void handleReminderAlarm(alarm)
   })
 }

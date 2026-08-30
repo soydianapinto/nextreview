@@ -21,10 +21,16 @@ describe('usePRQueue hook logic', () => {
           .map((i) => i.prId),
       )
 
-      const pendingQueue = prs.filter((pr) => !reviewedPrIds.has(pr.id))
+      const pendingQueue = prs.filter((pr) => {
+        if (pr.authorId === userId) {
+          return true
+        }
 
-      expect(pendingQueue).toHaveLength(2)
-      expect(pendingQueue.map((p) => p.id)).toEqual(['pr-2', 'pr-3'])
+        return !reviewedPrIds.has(pr.id)
+      })
+
+      expect(pendingQueue).toHaveLength(3)
+      expect(pendingQueue.map((p) => p.id)).toEqual(['pr-1', 'pr-2', 'pr-3'])
     })
 
     it('should keep all PRs if user has not reviewed any', () => {
@@ -83,7 +89,13 @@ describe('usePRQueue hook logic', () => {
           .filter((i) => i.userId === 'user-1' && i.status === 'REVIEWED')
           .map((i) => i.prId),
       )
-      const user1Queue = prs.filter((pr) => !user1ReviewedIds.has(pr.id))
+      const user1Queue = prs.filter((pr) => {
+        if (pr.authorId === 'user-1') {
+          return true
+        }
+
+        return !user1ReviewedIds.has(pr.id)
+      })
 
       // User-2 perspective
       const user2ReviewedIds = new Set(
@@ -91,10 +103,16 @@ describe('usePRQueue hook logic', () => {
           .filter((i) => i.userId === 'user-2' && i.status === 'REVIEWED')
           .map((i) => i.prId),
       )
-      const user2Queue = prs.filter((pr) => !user2ReviewedIds.has(pr.id))
+      const user2Queue = prs.filter((pr) => {
+        if (pr.authorId === 'user-2') {
+          return true
+        }
 
-      expect(user1Queue).toHaveLength(1)
-      expect(user1Queue[0]?.id).toBe('pr-2')
+        return !user2ReviewedIds.has(pr.id)
+      })
+
+      expect(user1Queue).toHaveLength(2)
+      expect(user1Queue.map((pr) => pr.id)).toEqual(['pr-1', 'pr-2'])
 
       expect(user2Queue).toHaveLength(2)
     })
