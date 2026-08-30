@@ -14,11 +14,14 @@ Run these SQL commands in your Supabase SQL editor to create the required tables
 CREATE TABLE IF NOT EXISTS public.prs (
   id TEXT PRIMARY KEY,
   url TEXT NOT NULL,
+  title TEXT,
   author_id TEXT NOT NULL,
   team_id TEXT NOT NULL,
   status TEXT NOT NULL CHECK (status IN ('OPEN', 'MERGED')),
   created_at BIGINT NOT NULL
 );
+
+ALTER TABLE public.prs ADD COLUMN IF NOT EXISTS title TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_prs_team_id ON public.prs(team_id);
 

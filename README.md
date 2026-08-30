@@ -5,6 +5,7 @@ Next Review is a Manifest V3 Chrome extension for sharing a pull request review 
 ## Features
 
 - Enqueue a pull request or merge request URL.
+- Add an optional human-readable title or context for each PR.
 - Show the PR id and current status (`OPEN` or `MERGED`).
 - Hide PRs that the current user has marked as reviewed.
 - Delete PRs from the queue.
