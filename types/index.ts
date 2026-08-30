@@ -11,6 +11,7 @@ export type PullRequest = {
   teamId: string
   status: 'OPEN' | 'MERGED'
   createdAt: number
+  lastPingedAt?: number
 }
 
 export type UserInteraction = {

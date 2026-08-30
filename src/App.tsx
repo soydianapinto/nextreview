@@ -8,6 +8,7 @@ type QueueItem = {
   id: string
   title: string
   url: string
+  author_id: string
   status: PullRequest['status']
 }
 
@@ -90,6 +91,35 @@ export const openReviewTab = (url: string) => {
   globalThis.open?.(url, '_blank')
 }
 
+type PingButtonProps = {
+  prId: string
+  onPing: (prId: string) => Promise<void>
+}
+
+function PingButton({ prId, onPing }: PingButtonProps) {
+  const [isNotified, setIsNotified] = useState(false)
+
+  const handlePing = async () => {
+    try {
+      await onPing(prId)
+      setIsNotified(true)
+      window.setTimeout(() => setIsNotified(false), 2000)
+    } catch (error) {
+      console.error('[Next Review] Ping action failed', { prId, error })
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => void handlePing()}
+      className="rounded-md border border-amber-500 px-2 py-1 text-xs text-amber-300"
+    >
+      {isNotified ? '✅ Notified!' : '🔔 Notify Update'}
+    </button>
+  )
+}
+
 const databaseService = new DatabaseService()
 
 function App() {
@@ -137,12 +167,24 @@ function App() {
           id: pr.id,
           title: createQueueDisplayTitle(pr.title, pr.url),
           url: pr.url,
+          author_id: pr.authorId,
           status: pr.status,
         }))
 
         console.info('[Next Review] Queue updated from Supabase', nextQueue)
         setQueue(nextQueue)
       },
+      (pr) => {
+        if (globalThis.chrome?.notifications) {
+          void globalThis.chrome.notifications.create({
+            type: 'basic',
+            iconUrl: 'icon-128.png',
+            title: 'PR Update Ready!',
+            message: pr.title || createQueueDisplayTitle(pr.title, pr.url),
+          })
+        }
+      },
+      preferences.userId,
     )
 
     return unsubscribe
@@ -161,6 +203,7 @@ function App() {
       id: `temp-${Date.now()}`,
       title: createQueueDisplayTitle(title, url),
       url,
+      author_id: preferences.userId,
       status: 'OPEN',
     }
 
@@ -172,6 +215,7 @@ function App() {
       id: pr.id,
       title: createQueueDisplayTitle(pr.title, pr.url),
       url: pr.url,
+      author_id: pr.authorId,
       status: pr.status,
     }
 
@@ -185,6 +229,8 @@ function App() {
     console.info('[Next Review] Open review clicked', { url })
     openReviewTab(url)
   }
+
+  const triggerPing = (prId: string) => databaseService.triggerPing(prId)
 
   const deleteQueueItem = async (id: string) => {
     console.info('[Next Review] Delete queue item clicked', { id, userId: preferences.userId })
@@ -200,6 +246,60 @@ function App() {
       }
       console.error('[Next Review] Delete action failed; restored queue item', { id, error })
     }
+  }
+
+  const markQueueItemAsReviewed = async (item: QueueItem) => {
+    console.info('[Next Review] Mark as reviewed clicked', { prId: item.id, userId: preferences.userId })
+    setQueue((current) => removeQueueItem(current, item.id))
+
+    try {
+      await databaseService.markAsReviewed(item.id, preferences.userId)
+      console.info('[Next Review] Mark as reviewed complete', { prId: item.id })
+    } catch (error) {
+      setQueue((current) => appendQueueItem(current, item))
+      console.error('[Next Review] Mark as reviewed failed; restored queue item', {
+        prId: item.id,
+        error,
+      })
+    }
+  }
+
+  const renderQueueActions = (item: QueueItem) => {
+    const isAuthor = item.author_id === preferences.userId
+
+    if (isAuthor) {
+      return (
+        <>
+          <PingButton prId={item.id} onPing={triggerPing} />
+          <button
+            type="button"
+            onClick={() => void deleteQueueItem(item.id)}
+            className="rounded-md border border-red-500 px-2 py-1 text-xs text-red-300"
+          >
+            Delete
+          </button>
+        </>
+      )
+    }
+
+    return (
+      <>
+        <button
+          type="button"
+          onClick={() => openReview(item.url)}
+          className="rounded-md bg-blue-600 px-2 py-1 text-xs text-white"
+        >
+          Review
+        </button>
+        <button
+          type="button"
+          onClick={() => void markQueueItemAsReviewed(item)}
+          className="rounded-md bg-emerald-600 px-2 py-1 text-xs text-white"
+        >
+          Done Review
+        </button>
+      </>
+    )
   }
 
   return (
@@ -248,20 +348,7 @@ function App() {
                 </span>
               </div>
               <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => openReview(item.url)}
-                  className="rounded-md bg-blue-600 px-2 py-1 text-xs text-white"
-                >
-                  Review
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void deleteQueueItem(item.id)}
-                  className="rounded-md border border-red-500 px-2 py-1 text-xs text-red-300"
-                >
-                  Delete
-                </button>
+                {renderQueueActions(item)}
               </div>
             </li>
           ))}

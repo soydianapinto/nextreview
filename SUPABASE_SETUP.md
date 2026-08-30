@@ -18,10 +18,12 @@ CREATE TABLE IF NOT EXISTS public.prs (
   author_id TEXT NOT NULL,
   team_id TEXT NOT NULL,
   status TEXT NOT NULL CHECK (status IN ('OPEN', 'MERGED')),
-  created_at BIGINT NOT NULL
+  created_at BIGINT NOT NULL,
+  last_pinged_at BIGINT
 );
 
 ALTER TABLE public.prs ADD COLUMN IF NOT EXISTS title TEXT;
+ALTER TABLE public.prs ADD COLUMN IF NOT EXISTS last_pinged_at BIGINT;
 
 CREATE INDEX IF NOT EXISTS idx_prs_team_id ON public.prs(team_id);
 
