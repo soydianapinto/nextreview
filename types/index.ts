@@ -6,6 +6,7 @@ export type UserPreferences = {
 export type PullRequest = {
   id: string
   url: string
+  title?: string
   authorId: string
   teamId: string
   status: 'OPEN' | 'MERGED'

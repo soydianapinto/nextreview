@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { appendQueueItem, createQueueTitle, openReviewTab, replaceQueueItem } from './App'
+import { appendQueueItem, createQueueDisplayTitle, createQueueTitle, openReviewTab, replaceQueueItem } from './App'
 
 describe('createQueueTitle', () => {
   it('prefers the PR id when available', () => {
@@ -9,6 +9,11 @@ describe('createQueueTitle', () => {
 
   it('falls back to url when there is no id', () => {
     expect(createQueueTitle('', 'https://github.com/org/repo/pull/1')).toBe('PR: pull / 1')
+  })
+
+  it('prefers the human-readable title and falls back to the URL path', () => {
+    expect(createQueueDisplayTitle('Fix checkout flow', 'https://github.com/org/repo/pull/123')).toBe('Fix checkout flow')
+    expect(createQueueDisplayTitle(undefined, 'https://github.com/org/repo/pull/123')).toBe('repo/pull/123')
   })
 
   it('adds a newly enqueued PR without duplicating it', () => {

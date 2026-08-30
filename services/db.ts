@@ -4,6 +4,7 @@ import { supabase } from '../utils/supabaseClient'
 const mapPrRow = (row: Record<string, unknown>): PullRequest => ({
   id: String(row.id ?? ''),
   url: String(row.url ?? ''),
+  title: typeof row.title === 'string' ? row.title : undefined,
   authorId: String(row.author_id ?? row.authorId ?? ''),
   teamId: String(row.team_id ?? row.teamId ?? ''),
   status: (row.status as PullRequest['status']) ?? 'OPEN',
@@ -18,7 +19,7 @@ const mapInteractionRow = (row: Record<string, unknown>): UserInteraction => ({
 })
 
 export interface DatabaseServiceContract {
-  enqueuePR: (url: string, teamId: string, authorId: string) => Promise<PullRequest>
+  enqueuePR: (url: string, title: string | undefined, teamId: string, authorId: string) => Promise<PullRequest>
   markAsReviewed: (prId: string, userId: string) => Promise<void>
   deletePR: (prId: string) => Promise<void>
   subscribeToTeamQueue: (
@@ -28,13 +29,14 @@ export interface DatabaseServiceContract {
 }
 
 export class DatabaseService implements DatabaseServiceContract {
-  async enqueuePR(url: string, teamId: string, authorId: string): Promise<PullRequest> {
-    console.info('[Next Review] enqueuePR called', { url, teamId, authorId })
+  async enqueuePR(url: string, title: string | undefined, teamId: string, authorId: string): Promise<PullRequest> {
+    console.info('[Next Review] enqueuePR called', { url, title, teamId, authorId })
 
     try {
       const pr: PullRequest = {
         id: `pr-${Date.now()}`,
         url,
+        title: title?.trim() || undefined,
         authorId,
         teamId,
         status: 'OPEN',
@@ -44,6 +46,7 @@ export class DatabaseService implements DatabaseServiceContract {
       const prRow = {
         id: pr.id,
         url: pr.url,
+        title: pr.title,
         author_id: pr.authorId,
         team_id: pr.teamId,
         status: pr.status,
@@ -151,7 +154,7 @@ export class DatabaseService implements DatabaseServiceContract {
       try {
         const { data: prs, error: prsError } = await supabase
           .from('prs')
-          .select('id, url, author_id, team_id, status, created_at')
+          .select('id, url, title, author_id, team_id, status, created_at')
           .eq('team_id', teamId)
 
         if (prsError) {

@@ -35,6 +35,17 @@ export const createQueueTitle = (id: string, url?: string) => {
   return `PR: ${tail.join(' / ')}`
 }
 
+export const createQueueDisplayTitle = (title: string | undefined, url: string) => {
+  const trimmedTitle = title?.trim()
+  if (trimmedTitle) {
+    return trimmedTitle
+  }
+
+  const segments = url.split('/').filter(Boolean)
+  const pathSegments = segments.slice(-3)
+  return pathSegments.length > 0 ? pathSegments.join('/') : 'Review queue item'
+}
+
 export const filterPendingQueue = (
   prs: PullRequest[],
   interactions: UserInteraction[],
@@ -85,6 +96,7 @@ function App() {
   const [preferences, setPreferences] = useState<UserPreferences>(defaultPreferences)
   const [hasLoadedPreferences, setHasLoadedPreferences] = useState(false)
   const [prUrl, setPrUrl] = useState('')
+  const [prTitle, setPrTitle] = useState('')
   const [queue, setQueue] = useState<QueueItem[]>([])
 
   useEffect(() => {
@@ -123,7 +135,7 @@ function App() {
         const pendingQueue = filterPendingQueue(prs, interactions, preferences.userId)
         const nextQueue = pendingQueue.map((pr) => ({
           id: pr.id,
-          title: createQueueTitle(pr.id, pr.url),
+          title: createQueueDisplayTitle(pr.title, pr.url),
           url: pr.url,
           status: pr.status,
         }))
@@ -140,24 +152,25 @@ function App() {
 
   const enqueuePr = async () => {
     const url = prUrl.trim()
+    const title = prTitle.trim()
     if (!url) {
       return
     }
 
     const optimisticItem: QueueItem = {
       id: `temp-${Date.now()}`,
-      title: createQueueTitle('', url),
+      title: createQueueDisplayTitle(title, url),
       url,
       status: 'OPEN',
     }
 
     setQueue((current) => appendQueueItem(current, optimisticItem))
 
-    console.info('[Next Review] Enqueue button pressed', { url, teamId: preferences.teamId, userId: preferences.userId })
-    const pr = await databaseService.enqueuePR(url, preferences.teamId, preferences.userId)
+    console.info('[Next Review] Enqueue button pressed', { url, title, teamId: preferences.teamId, userId: preferences.userId })
+    const pr = await databaseService.enqueuePR(url, title, preferences.teamId, preferences.userId)
     const queueItem = {
       id: pr.id,
-      title: createQueueTitle(pr.id, pr.url),
+      title: createQueueDisplayTitle(pr.title, pr.url),
       url: pr.url,
       status: pr.status,
     }
@@ -165,6 +178,7 @@ function App() {
     setQueue((current) => replaceQueueItem(current, optimisticItem.id, queueItem))
     console.info('[Next Review] Enqueue action complete', { url, prId: pr.id })
     setPrUrl('')
+    setPrTitle('')
   }
 
   const openReview = (url: string) => {
@@ -194,18 +208,24 @@ function App() {
         <h1 className="text-xl font-semibold">Next Review</h1>
       </header>
 
-      <section className="mb-4 flex gap-2">
+      <section className="mb-4 grid grid-cols-2 gap-2">
         <input
           value={prUrl}
           onChange={(event) => setPrUrl(event.target.value)}
           placeholder="Paste your PR/MR URL"
-          className="flex-1 rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none ring-emerald-500 focus:ring"
+          className="min-w-0 rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none ring-emerald-500 focus:ring"
+        />
+        <input
+          value={prTitle}
+          onChange={(event) => setPrTitle(event.target.value)}
+          placeholder="PR Title / Context (optional)"
+          className="min-w-0 rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none ring-emerald-500 focus:ring"
         />
         <button
           type="button"
           onClick={() => void enqueuePr()}
           disabled={!canEnqueue}
-          className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+          className="col-span-2 rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
         >
           Enqueue
         </button>

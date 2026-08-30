@@ -15,7 +15,7 @@ describe('DatabaseService', () => {
       const teamId = 'team-1'
       const authorId = 'user-1'
 
-      await service.enqueuePR(url, teamId, authorId)
+      await service.enqueuePR(url, 'Fix checkout flow', teamId, authorId)
 
       let capturedPrs: any[] = []
       service.subscribeToTeamQueue(teamId, (prs) => {
@@ -24,6 +24,7 @@ describe('DatabaseService', () => {
 
       expect(capturedPrs).toHaveLength(1)
       expect(capturedPrs[0]?.url).toBe(url)
+      expect(capturedPrs[0]?.title).toBe('Fix checkout flow')
       expect(capturedPrs[0]?.teamId).toBe(teamId)
       expect(capturedPrs[0]?.status).toBe('OPEN')
     })
@@ -33,7 +34,7 @@ describe('DatabaseService', () => {
       const teamId = 'team-1'
       const authorId = 'user-1'
 
-      await service.enqueuePR(url, teamId, authorId)
+      await service.enqueuePR(url, undefined, teamId, authorId)
 
       let capturedInteractions: any[] = []
       service.subscribeToTeamQueue(teamId, (_, interactions) => {
@@ -48,9 +49,9 @@ describe('DatabaseService', () => {
     it('should handle multiple PRs in the queue', async () => {
       const teamId = 'team-1'
 
-      await service.enqueuePR('https://github.com/example/repo/pull/1', teamId, 'user-1')
-      await service.enqueuePR('https://github.com/example/repo/pull/2', teamId, 'user-2')
-      await service.enqueuePR('https://github.com/example/repo/pull/3', teamId, 'user-1')
+      await service.enqueuePR('https://github.com/example/repo/pull/1', undefined, teamId, 'user-1')
+      await service.enqueuePR('https://github.com/example/repo/pull/2', undefined, teamId, 'user-2')
+      await service.enqueuePR('https://github.com/example/repo/pull/3', undefined, teamId, 'user-1')
 
       let capturedPrs: any[] = []
       service.subscribeToTeamQueue(teamId, (prs) => {
@@ -67,7 +68,7 @@ describe('DatabaseService', () => {
       const teamId = 'team-1'
       const userId = 'user-1'
 
-      await service.enqueuePR(url, teamId, userId)
+      await service.enqueuePR(url, undefined, teamId, userId)
 
       let prId: string | null = null
       service.subscribeToTeamQueue(teamId, (prs) => {
@@ -97,7 +98,7 @@ describe('DatabaseService', () => {
       const user1 = 'user-1'
       const user2 = 'user-2'
 
-      await service.enqueuePR(url, teamId, user1)
+      await service.enqueuePR(url, undefined, teamId, user1)
 
       let prId: string | null = null
       service.subscribeToTeamQueue(teamId, (prs) => {
@@ -127,8 +128,8 @@ describe('DatabaseService', () => {
       const team1 = 'team-1'
       const team2 = 'team-2'
 
-      await service.enqueuePR('https://github.com/example/repo/pull/1', team1, 'user-1')
-      await service.enqueuePR('https://github.com/example/repo/pull/2', team2, 'user-1')
+      await service.enqueuePR('https://github.com/example/repo/pull/1', undefined, team1, 'user-1')
+      await service.enqueuePR('https://github.com/example/repo/pull/2', undefined, team2, 'user-1')
 
       let team1Prs: any[] = []
       service.subscribeToTeamQueue(team1, (prs) => {
