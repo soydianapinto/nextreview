@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-import { DatabaseService } from '../services/db'
+import { createDatabaseService } from '../services/db'
 import type { PullRequest } from '../types'
 
 export const usePRQueue = (userId: string, teamId: string) => {
@@ -8,7 +8,7 @@ export const usePRQueue = (userId: string, teamId: string) => {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    const databaseService = new DatabaseService()
+    const databaseService = createDatabaseService()
     setIsLoading(true)
 
     const unsubscribe = databaseService.subscribeToTeamQueue(

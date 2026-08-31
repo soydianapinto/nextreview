@@ -1,10 +1,10 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   countPendingReviewsFromOthers,
   PR_REMINDER_ALARM,
   syncReminderAlarm,
-} from './reminders'
+} from '../../utils/reminders'
 
 describe('countPendingReviewsFromOthers', () => {
   it('counts other developers OPEN and NEEDS REVIEW cards the user has not reviewed', () => {

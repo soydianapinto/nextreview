@@ -1,17 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { DatabaseService } from '../services/db'
+import { DatabaseService } from '../../services/db'
 import {
   handleIncomingPing,
   handleReminderAlarm,
   initializeReminderAlarm,
+  onStorageChanged,
   PR_REMINDER_ALARM,
   reminderIntervalFromChanges,
   resolveReminderInterval,
   shouldClearReminderAlarm,
   syncReminderAlarm,
-  onStorageChanged,
-} from './background'
+} from '../../src/background'
 
 const mockChrome = {
   storage: {

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 describe('usePRQueue hook logic', () => {
   describe('filtering reviewed PRs', () => {
@@ -39,7 +39,7 @@ describe('usePRQueue hook logic', () => {
         { id: 'pr-2', url: 'https://github.com/example/pull/2', teamId: 'team-1', status: 'OPEN' as const, authorId: 'user-2', createdAt: Date.now() },
       ]
 
-      const interactions = [] // No interactions
+      const interactions: { prId: string; userId: string; status: 'REVIEWED' | 'PENDING'; updatedAt: number }[] = []
 
       const userId = 'user-1'
       const reviewedPrIds = new Set(
@@ -54,7 +54,7 @@ describe('usePRQueue hook logic', () => {
     })
 
     it('should handle empty PR list', () => {
-      const prs: any[] = []
+      const prs: { id: string }[] = []
       const interactions = [
         { prId: 'pr-1', userId: 'user-1', status: 'REVIEWED' as const, updatedAt: Date.now() },
       ]
@@ -83,7 +83,6 @@ describe('usePRQueue hook logic', () => {
         { prId: 'pr-1', userId: 'user-1', status: 'REVIEWED' as const, updatedAt: Date.now() },
       ]
 
-      // User-1 perspective
       const user1ReviewedIds = new Set(
         interactions
           .filter((i) => i.userId === 'user-1' && i.status === 'REVIEWED')
@@ -97,7 +96,6 @@ describe('usePRQueue hook logic', () => {
         return !user1ReviewedIds.has(pr.id)
       })
 
-      // User-2 perspective
       const user2ReviewedIds = new Set(
         interactions
           .filter((i) => i.userId === 'user-2' && i.status === 'REVIEWED')
