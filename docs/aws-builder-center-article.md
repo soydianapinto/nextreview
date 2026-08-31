@@ -19,6 +19,8 @@ The popup never talks to a vendor SDK. It talks to a database contract. Supabase
 
 The source is public: [https://github.com/soydianapinto/nextreview](https://github.com/soydianapinto/nextreview).
 
+Instagram account for the tool: [https://github.com/soydianapinto/nextreview](https://www.instagram.com/nextreviewfordevs/)
+
 ## The problem I wanted to solve
 
 Code review tools are excellent at showing a single pull request. They are weaker at showing a **team’s work in flight**.
