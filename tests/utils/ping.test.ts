@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { shouldNotifyForPing } from './ping'
+import { shouldNotifyForPing } from '../../utils/ping'
 
 describe('shouldNotifyForPing', () => {
   it('notifies teammates who do not have Do Not Disturb on', () => {

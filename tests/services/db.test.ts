@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 
-import { DatabaseService } from './db'
+import { DatabaseService } from '../../services/db'
 
 describe('DatabaseService', () => {
   let service: DatabaseService

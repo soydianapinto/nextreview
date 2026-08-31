@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { DatabaseService } from '../services/db'
+import { createDatabaseService } from '../services/db'
 import type { PullRequest, UserInteraction, UserPreferences } from '../types'
 import { suppressLocalPingNotification } from '../utils/ping'
 import { syncReminderAlarm } from '../utils/reminders'
@@ -239,7 +239,7 @@ function PingButton({ prId, onPing }: PingButtonProps) {
   )
 }
 
-const databaseService = new DatabaseService()
+const databaseService = createDatabaseService()
 
 function App() {
   const [preferences, setPreferences] = useState<UserPreferences>(defaultPreferences)

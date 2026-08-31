@@ -1,9 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { getUserPreferences, setUserPreferences } from './storage'
+import { getUserPreferences, setUserPreferences } from '../../utils/storage'
 
 describe('Storage utilities', () => {
-  // Mock chrome.storage.local API
   const mockChromeStorage = {
     get: vi.fn(),
     set: vi.fn(),
@@ -26,8 +25,6 @@ describe('Storage utilities', () => {
         callback({ [key]: mockPrefs })
       })
 
-      // Note: This test shows the expected behavior.
-      // In actual runtime, the real chrome.storage.local would be used.
       const result = await new Promise((resolve) => {
         mockChromeStorage.get('nextReview.userPreferences', (result: any) => {
           resolve(result['nextReview.userPreferences'])

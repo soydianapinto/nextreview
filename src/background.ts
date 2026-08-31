@@ -1,4 +1,4 @@
-import { DatabaseService } from '../services/db'
+import { createDatabaseService } from '../services/db'
 import type { PullRequest } from '../types'
 import {
   consumeLocalPingSuppression,
@@ -20,7 +20,7 @@ const PREFERENCES_STORAGE_KEY = 'nextReview.userPreferences'
 
 export const PING_KEEPALIVE_ALARM = 'pr-ping-keepalive'
 
-const databaseService = new DatabaseService()
+const databaseService = createDatabaseService()
 let stopPingSubscription: (() => void) | undefined
 
 type StoredPreferences = {
