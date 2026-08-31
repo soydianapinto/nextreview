@@ -8,11 +8,6 @@ if (!supabaseUrl || !supabaseAnonKey) {
     '[Next Review] Missing Supabase configuration. Please ensure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are set in your .env file.',
     { supabaseUrl: !!supabaseUrl, supabaseAnonKey: !!supabaseAnonKey },
   )
-} else {
-  console.info('[Next Review] Supabase client initialized', {
-    url: supabaseUrl,
-    hasAnonKey: !!supabaseAnonKey,
-  })
 }
 
 export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '')
