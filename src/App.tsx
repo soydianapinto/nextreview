@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { DatabaseService } from '../services/db'
 import type { PullRequest, UserInteraction, UserPreferences } from '../types'
@@ -16,6 +16,21 @@ type QueueItem = {
   createdAt: number
 }
 
+const buildQueueItems = (
+  prs: PullRequest[],
+  interactions: UserInteraction[],
+  userId: string,
+): QueueItem[] =>
+  filterPendingQueue(prs, interactions, userId).map((pr) => ({
+    id: pr.id,
+    title: createQueueDisplayTitle(pr.title, pr.url),
+    url: pr.url,
+    author_id: pr.authorId,
+    status: resolveQueueStatus(pr, interactions),
+    reviewedBy: listReviewedBy(pr, interactions),
+    createdAt: pr.createdAt,
+  }))
+
 // TODO: Restore per-team settings when multiple teams share one database.
 // For now everyone on this Supabase project is treated as the same team.
 const SHARED_TEAM_ID = 'demo-team'
@@ -27,6 +42,8 @@ const defaultPreferences: UserPreferences = {
   isDndActive: false,
 }
 
+export const MAX_USERNAME_LENGTH = 30
+
 export const createRandomUsername = () => `Developer ${Math.floor(Math.random() * 999) + 1}`
 
 export const needsGeneratedUsername = (userId?: string) => {
@@ -34,8 +51,16 @@ export const needsGeneratedUsername = (userId?: string) => {
   return trimmed.length === 0 || trimmed === 'demo-user' || trimmed.startsWith('user-')
 }
 
-export const resolveUsername = (userId?: string) =>
-  needsGeneratedUsername(userId) ? createRandomUsername() : userId?.trim() ?? createRandomUsername()
+export const isUsernameTooLong = (userId?: string) =>
+  (userId?.trim() ?? '').length > MAX_USERNAME_LENGTH
+
+export const resolveUsername = (userId?: string) => {
+  if (needsGeneratedUsername(userId)) {
+    return createRandomUsername()
+  }
+
+  return userId?.trim().slice(0, MAX_USERNAME_LENGTH) ?? createRandomUsername()
+}
 
 export const createQueueTitle = (id: string, url?: string) => {
   if (id && id.trim().length > 0) {
@@ -155,6 +180,20 @@ export const replaceQueueItem = <T extends { id: string }>(queue: T[], id: strin
 export const removeQueueItem = <T extends { id: string }>(queue: T[], id: string) =>
   queue.filter((existing) => existing.id !== id)
 
+export const isValidPrUrl = (value: string) => {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return false
+  }
+
+  try {
+    const parsed = new URL(trimmed)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
 export const openReviewTab = (url: string) => {
   if (!url.trim()) {
     return
@@ -208,30 +247,29 @@ function App() {
   const [prUrl, setPrUrl] = useState('')
   const [prTitle, setPrTitle] = useState('')
   const [queue, setQueue] = useState<QueueItem[]>([])
+  const userIdRef = useRef(preferences.userId)
+  const latestQueueDataRef = useRef<{ prs: PullRequest[]; interactions: UserInteraction[] } | null>(null)
+  const lastPersistedPreferencesRef = useRef('')
+  userIdRef.current = preferences.userId
 
   useEffect(() => {
     const loadPreferences = async () => {
-      console.info('[Next Review] Loading saved preferences from storage')
       const savedPreferences = await getUserPreferences()
 
       if (savedPreferences) {
-        const nextPreferences = {
+        setPreferences({
           ...defaultPreferences,
           ...savedPreferences,
           userId: savedPreferences.userId?.trim()
-            ? savedPreferences.userId.trim()
+            ? savedPreferences.userId.trim().slice(0, MAX_USERNAME_LENGTH)
             : createRandomUsername(),
           teamId: SHARED_TEAM_ID,
-        }
-        console.info('[Next Review] Saved preferences loaded', nextPreferences)
-        setPreferences(nextPreferences)
+        })
       } else {
-        const generatedPreferences = {
+        setPreferences({
           ...defaultPreferences,
           userId: createRandomUsername(),
-        }
-        console.info('[Next Review] No saved preferences found, using defaults', generatedPreferences)
-        setPreferences(generatedPreferences)
+        })
       }
 
       setHasLoadedPreferences(true)
@@ -245,42 +283,49 @@ function App() {
       return
     }
 
-    console.info('[Next Review] Persisting preferences', preferences)
+    const serialized = JSON.stringify(preferences)
+    if (serialized === lastPersistedPreferencesRef.current) {
+      return
+    }
+
+    lastPersistedPreferencesRef.current = serialized
     void setUserPreferences(preferences)
     void syncReminderAlarm(preferences.reminderInterval)
   }, [hasLoadedPreferences, preferences])
 
   useEffect(() => {
-    console.info('[Next Review] Subscribing to team queue', { teamId: preferences.teamId })
+    if (!hasLoadedPreferences) {
+      return
+    }
 
     const unsubscribe = databaseService.subscribeToTeamQueue(
       preferences.teamId,
       (prs, interactions) => {
-        const pendingQueue = filterPendingQueue(prs, interactions, preferences.userId)
-        const nextQueue = pendingQueue.map((pr) => ({
-          id: pr.id,
-          title: createQueueDisplayTitle(pr.title, pr.url),
-          url: pr.url,
-          author_id: pr.authorId,
-          status: resolveQueueStatus(pr, interactions),
-          reviewedBy: listReviewedBy(pr, interactions),
-          createdAt: pr.createdAt,
-        }))
-
-        console.info('[Next Review] Queue updated from Supabase', nextQueue)
-        setQueue(nextQueue)
+        latestQueueDataRef.current = { prs, interactions }
+        setQueue(buildQueueItems(prs, interactions, userIdRef.current))
       },
     )
 
     return unsubscribe
-  }, [preferences.teamId, preferences.userId])
+  }, [hasLoadedPreferences, preferences.teamId])
 
-  const canEnqueue = useMemo(() => prUrl.trim().length > 0, [prUrl])
+  useEffect(() => {
+    const latest = latestQueueDataRef.current
+    if (!latest) {
+      return
+    }
+
+    setQueue(buildQueueItems(latest.prs, latest.interactions, preferences.userId))
+  }, [preferences.userId])
+
+  const isUrlInvalid = prUrl.trim().length > 0 && !isValidPrUrl(prUrl)
+  const isUsernameInvalid = isUsernameTooLong(preferences.userId)
+  const canEnqueue = useMemo(() => isValidPrUrl(prUrl), [prUrl])
 
   const enqueuePr = async () => {
     const url = prUrl.trim()
     const title = prTitle.trim()
-    if (!url) {
+    if (!isValidPrUrl(url)) {
       return
     }
 
@@ -296,7 +341,6 @@ function App() {
 
     setQueue((current) => appendQueueItem(current, optimisticItem))
 
-    console.info('[Next Review] Enqueue button pressed', { url, title, teamId: preferences.teamId, userId: preferences.userId })
     const pr = await databaseService.enqueuePR(url, title, preferences.teamId, preferences.userId)
     const queueItem = {
       id: pr.id,
@@ -309,13 +353,11 @@ function App() {
     }
 
     setQueue((current) => replaceQueueItem(current, optimisticItem.id, queueItem))
-    console.info('[Next Review] Enqueue action complete', { url, prId: pr.id })
     setPrUrl('')
     setPrTitle('')
   }
 
   const openReview = (url: string) => {
-    console.info('[Next Review] Open review clicked', { url })
     openReviewTab(url)
   }
 
@@ -338,12 +380,10 @@ function App() {
       return
     }
 
-    console.info('[Next Review] Delete queue item clicked', { id, userId: preferences.userId })
     setQueue((current) => removeQueueItem(current, id))
 
     try {
       await databaseService.deletePR(id)
-      console.info('[Next Review] Delete action complete', { id })
     } catch (error) {
       if (deletedItem) {
         setQueue((current) => appendQueueItem(current, deletedItem))
@@ -357,12 +397,10 @@ function App() {
       return
     }
 
-    console.info('[Next Review] Mark as reviewed clicked', { prId: item.id, userId: preferences.userId })
     setQueue((current) => removeQueueItem(current, item.id))
 
     try {
       await databaseService.markAsReviewed(item.id, preferences.userId)
-      console.info('[Next Review] Mark as reviewed complete', { prId: item.id })
     } catch (error) {
       setQueue((current) => appendQueueItem(current, item))
       console.error('[Next Review] Mark as reviewed failed; restored queue item', {
@@ -419,10 +457,19 @@ function App() {
 
       <section className="mb-4 grid grid-cols-2 gap-2">
         <input
+          type="url"
+          inputMode="url"
+          autoComplete="url"
           value={prUrl}
           onChange={(event) => setPrUrl(event.target.value)}
-          placeholder="URL"
-          className="min-w-0 rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none ring-emerald-500 focus:ring"
+          placeholder="https://..."
+          aria-invalid={isUrlInvalid}
+          aria-describedby={isUrlInvalid ? 'pr-url-error' : undefined}
+          className={`min-w-0 rounded-md border bg-slate-900 px-3 py-2 text-sm outline-none focus:ring ${
+            isUrlInvalid
+              ? 'border-red-500 ring-red-500'
+              : 'border-slate-700 ring-emerald-500'
+          }`}
         />
         <input
           value={prTitle}
@@ -430,6 +477,11 @@ function App() {
           placeholder="Title (optional)"
           className="min-w-0 rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none ring-emerald-500 focus:ring"
         />
+        {isUrlInvalid ? (
+          <p id="pr-url-error" className="col-span-2 text-xs text-red-400">
+            Enter a valid http or https URL.
+          </p>
+        ) : null}
         <button
           type="button"
           onClick={() => void enqueuePr()}
@@ -449,6 +501,8 @@ function App() {
           id="username"
           value={preferences.userId}
           placeholder="Developer 1"
+          aria-invalid={isUsernameInvalid}
+          aria-describedby={isUsernameInvalid ? 'username-error' : undefined}
           onChange={(event) =>
             setPreferences((current) => ({
               ...current,
@@ -461,8 +515,17 @@ function App() {
               userId: resolveUsername(current.userId),
             }))
           }
-          className="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none ring-emerald-500 focus:ring"
+          className={`mt-1 w-full rounded-md border bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:ring ${
+            isUsernameInvalid
+              ? 'border-red-500 ring-red-500'
+              : 'border-slate-700 ring-emerald-500'
+          }`}
         />
+        {isUsernameInvalid ? (
+          <p id="username-error" className="mt-1 text-xs text-red-400">
+            Username must be {MAX_USERNAME_LENGTH} characters or fewer.
+          </p>
+        ) : null}
         <p className="mt-1 mb-3 text-xs text-slate-500">
           Use a different username from your reviewer. Leave it blank to get a name like Developer 1.
         </p>

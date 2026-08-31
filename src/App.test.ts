@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { appendQueueItem, createQueueDisplayTitle, createQueueTitle, createRandomUsername, formatQueueCreatedAt, needsGeneratedUsername, openReviewTab, replaceQueueItem, resolveUsername } from './App'
+import { appendQueueItem, createQueueDisplayTitle, createQueueTitle, createRandomUsername, formatQueueCreatedAt, isUsernameTooLong, isValidPrUrl, MAX_USERNAME_LENGTH, needsGeneratedUsername, openReviewTab, replaceQueueItem, resolveUsername } from './App'
 
 describe('createQueueTitle', () => {
   it('prefers the PR id when available', () => {
@@ -42,6 +42,17 @@ describe('createQueueTitle', () => {
     expect(() => openReviewTab('  ')).not.toThrow()
   })
 
+  it('accepts http and https PR URLs and rejects everything else', () => {
+    expect(isValidPrUrl('https://github.com/org/repo/pull/1')).toBe(true)
+    expect(isValidPrUrl(' http://gitlab.com/group/project/-/merge_requests/1 ')).toBe(true)
+    expect(isValidPrUrl('')).toBe(false)
+    expect(isValidPrUrl('   ')).toBe(false)
+    expect(isValidPrUrl('not-a-url')).toBe(false)
+    expect(isValidPrUrl('github.com/org/repo/pull/1')).toBe(false)
+    expect(isValidPrUrl('ftp://example.com/pr/1')).toBe(false)
+    expect(isValidPrUrl('javascript:alert(1)')).toBe(false)
+  })
+
   it('generates Developer N usernames when none is provided', () => {
     expect(needsGeneratedUsername(undefined)).toBe(true)
     expect(needsGeneratedUsername('')).toBe(true)
@@ -50,6 +61,19 @@ describe('createQueueTitle', () => {
     expect(needsGeneratedUsername('Ada')).toBe(false)
     expect(createRandomUsername()).toMatch(/^Developer [1-9]\d{0,2}$/)
     expect(resolveUsername('Ada')).toBe('Ada')
+    expect(resolveUsername('  Ada  ')).toBe('Ada')
     expect(resolveUsername('  ')).toMatch(/^Developer [1-9]\d{0,2}$/)
+  })
+
+  it('rejects usernames longer than the max length after trim', () => {
+    const atLimit = 'a'.repeat(MAX_USERNAME_LENGTH)
+    const overLimit = 'a'.repeat(MAX_USERNAME_LENGTH + 1)
+
+    expect(isUsernameTooLong(atLimit)).toBe(false)
+    expect(isUsernameTooLong(overLimit)).toBe(true)
+    expect(isUsernameTooLong(`  ${atLimit}  `)).toBe(false)
+    expect(isUsernameTooLong(`  ${overLimit}  `)).toBe(true)
+    expect(resolveUsername(overLimit)).toBe(atLimit)
+    expect(resolveUsername(`  ${overLimit}  `)).toBe(atLimit)
   })
 })

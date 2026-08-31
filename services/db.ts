@@ -35,8 +35,6 @@ export interface DatabaseServiceContract {
 
 export class DatabaseService implements DatabaseServiceContract {
   async enqueuePR(url: string, title: string | undefined, teamId: string, authorId: string): Promise<PullRequest> {
-    console.info('[Next Review] enqueuePR called', { url, title, teamId, authorId })
-
     try {
       const pr: PullRequest = {
         id: `pr-${Date.now()}`,
@@ -58,8 +56,6 @@ export class DatabaseService implements DatabaseServiceContract {
         created_at: pr.createdAt,
       }
 
-      console.info('[Next Review] Inserting PR into Supabase', prRow)
-
       const { error: prError } = await supabase.from('prs').insert([prRow])
       if (prError) {
         console.error('[Next Review] Error inserting PR into Supabase:', prError)
@@ -80,8 +76,6 @@ export class DatabaseService implements DatabaseServiceContract {
         updated_at: interaction.updatedAt,
       }
 
-      console.info('[Next Review] Inserting interaction into Supabase', interactionRow)
-
       const { error: interactionError } = await supabase
         .from('interactions')
         .insert([interactionRow])
@@ -91,7 +85,6 @@ export class DatabaseService implements DatabaseServiceContract {
         throw interactionError
       }
 
-      console.info('[Next Review] enqueuePR succeeded', { prId: pr.id, interaction })
       return pr
     } catch (error) {
       console.error('[Next Review] Failed to enqueue PR:', error)
@@ -100,8 +93,6 @@ export class DatabaseService implements DatabaseServiceContract {
   }
 
   async markAsReviewed(prId: string, userId: string): Promise<void> {
-    console.info('[Next Review] markAsReviewed called', { prId, userId })
-
     try {
       const payload = {
         pr_id: prId,
@@ -109,8 +100,6 @@ export class DatabaseService implements DatabaseServiceContract {
         status: 'REVIEWED' as const,
         updated_at: Date.now(),
       }
-
-      console.info('[Next Review] Upserting reviewed interaction', payload)
 
       const { error } = await supabase
         .from('interactions')
@@ -120,8 +109,6 @@ export class DatabaseService implements DatabaseServiceContract {
         console.error('[Next Review] Error marking PR as reviewed in Supabase:', error)
         throw error
       }
-
-      console.info('[Next Review] markAsReviewed succeeded', { prId, userId })
     } catch (error) {
       console.error('[Next Review] Failed to mark PR as reviewed:', error)
       throw error
@@ -129,8 +116,6 @@ export class DatabaseService implements DatabaseServiceContract {
   }
 
   async triggerPing(prId: string): Promise<void> {
-    console.info('[Next Review] triggerPing called', { prId })
-
     try {
       const { error: pingError } = await supabase
         .from('prs')
@@ -152,8 +137,6 @@ export class DatabaseService implements DatabaseServiceContract {
         console.error('[Next Review] Error resetting reviewed interactions:', resetError)
         throw resetError
       }
-
-      console.info('[Next Review] triggerPing succeeded', { prId })
     } catch (error) {
       console.error('[Next Review] Failed to trigger ping:', error)
       throw error
@@ -161,8 +144,6 @@ export class DatabaseService implements DatabaseServiceContract {
   }
 
   async deletePR(prId: string): Promise<void> {
-    console.info('[Next Review] deletePR called', { prId })
-
     try {
       const { error } = await supabase.from('prs').delete().eq('id', prId)
 
@@ -170,8 +151,6 @@ export class DatabaseService implements DatabaseServiceContract {
         console.error('[Next Review] Error deleting PR from Supabase:', error)
         throw error
       }
-
-      console.info('[Next Review] deletePR succeeded', { prId })
     } catch (error) {
       console.error('[Next Review] Failed to delete PR:', error)
       throw error
@@ -218,7 +197,6 @@ export class DatabaseService implements DatabaseServiceContract {
     onPing?: (pr: PullRequest) => void,
     currentUserId?: string,
   ): () => void {
-    console.info('[Next Review] subscribeToTeamQueue started', { teamId })
     let isSubscribed = true
     const lastPingedByPrId = new Map<string, number>()
 
@@ -245,12 +223,9 @@ export class DatabaseService implements DatabaseServiceContract {
     }
 
     const fetchAndNotify = async () => {
-      console.info('[Next Review] Fetching team queue from Supabase', { teamId })
-
       try {
         const { prs, interactions } = await this.getTeamQueue(teamId)
         cachePingTimestamps(prs)
-        console.info('[Next Review] Team queue data ready', { teamId, prs, interactions })
 
         if (isSubscribed) {
           callback(prs, interactions)
@@ -273,7 +248,6 @@ export class DatabaseService implements DatabaseServiceContract {
           filter: `team_id=eq.${teamId}`,
         },
         (payload) => {
-          console.info('[Next Review] PR realtime event received', { teamId, payload })
           if (isSubscribed) {
             const incomingPr = mapPrRow((payload.new ?? {}) as Record<string, unknown>)
             if (incomingPr.id) {
@@ -284,7 +258,9 @@ export class DatabaseService implements DatabaseServiceContract {
         },
       )
       .subscribe((status) => {
-        console.info('[Next Review] PR realtime subscription status', { teamId, status })
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.error('[Next Review] PR realtime subscription failed', { teamId, status })
+        }
       })
 
     const interactionsSubscription = supabase
@@ -296,20 +272,20 @@ export class DatabaseService implements DatabaseServiceContract {
           schema: 'public',
           table: 'interactions',
         },
-        (payload) => {
-          console.info('[Next Review] Interaction realtime event received', { teamId, payload })
+        () => {
           if (isSubscribed) {
             void fetchAndNotify()
           }
         },
       )
       .subscribe((status) => {
-        console.info('[Next Review] Interaction realtime subscription status', { teamId, status })
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.error('[Next Review] Interaction realtime subscription failed', { teamId, status })
+        }
       })
 
     return () => {
       isSubscribed = false
-      console.info('[Next Review] Unsubscribing from team queue', { teamId })
       void supabase.removeChannel(prsSubscription)
       void supabase.removeChannel(interactionsSubscription)
     }
