@@ -1,5 +1,6 @@
 import type { PullRequest, UserInteraction } from '../types'
 
+import { MemoryDatabaseService } from './memoryDatabase'
 import { SupabaseDatabaseService } from './supabaseDatabase'
 
 export interface DatabaseServiceContract {
@@ -24,6 +25,8 @@ export const createDatabaseService = (): DatabaseServiceContract => {
   switch (provider) {
     case 'supabase':
       return new SupabaseDatabaseService()
+    case 'memory':
+      return new MemoryDatabaseService()
     default:
       throw new Error(
         `[Next Review] Unknown database provider "${provider}". Implement DatabaseServiceContract and register it in createDatabaseService().`,

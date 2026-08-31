@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
-import { DatabaseService } from '../../services/db'
+import type { DatabaseServiceContract } from '../../services/db'
+import { MemoryDatabaseService } from '../../services/memoryDatabase'
+import type { PullRequest, UserInteraction } from '../../types'
 
 describe('DatabaseService', () => {
-  let service: DatabaseService
+  let service: DatabaseServiceContract
 
   beforeEach(() => {
-    service = new DatabaseService()
+    service = new MemoryDatabaseService()
   })
 
   describe('enqueuePR', () => {
@@ -17,7 +19,7 @@ describe('DatabaseService', () => {
 
       await service.enqueuePR(url, 'Fix checkout flow', teamId, authorId)
 
-      let capturedPrs: any[] = []
+      let capturedPrs: PullRequest[] = []
       service.subscribeToTeamQueue(teamId, (prs) => {
         capturedPrs = prs
       })
@@ -36,7 +38,7 @@ describe('DatabaseService', () => {
 
       await service.enqueuePR(url, undefined, teamId, authorId)
 
-      let capturedInteractions: any[] = []
+      let capturedInteractions: UserInteraction[] = []
       service.subscribeToTeamQueue(teamId, (_, interactions) => {
         capturedInteractions = interactions
       })
@@ -53,7 +55,7 @@ describe('DatabaseService', () => {
       await service.enqueuePR('https://github.com/example/repo/pull/2', undefined, teamId, 'user-2')
       await service.enqueuePR('https://github.com/example/repo/pull/3', undefined, teamId, 'user-1')
 
-      let capturedPrs: any[] = []
+      let capturedPrs: PullRequest[] = []
       service.subscribeToTeamQueue(teamId, (prs) => {
         capturedPrs = prs
       })
@@ -82,7 +84,7 @@ describe('DatabaseService', () => {
       if (prId) {
         await service.markAsReviewed(prId, userId)
 
-        let capturedInteractions: any[] = []
+        let capturedInteractions: UserInteraction[] = []
         service.subscribeToTeamQueue(teamId, (_, interactions) => {
           capturedInteractions = interactions
         })
@@ -109,8 +111,9 @@ describe('DatabaseService', () => {
 
       if (prId) {
         await service.markAsReviewed(prId, user1)
+        await service.markAsReviewed(prId, user2)
 
-        let capturedInteractions: any[] = []
+        let capturedInteractions: UserInteraction[] = []
         service.subscribeToTeamQueue(teamId, (_, interactions) => {
           capturedInteractions = interactions
         })
@@ -118,7 +121,11 @@ describe('DatabaseService', () => {
         const user1Interaction = capturedInteractions.find(
           (i) => i.prId === prId && i.userId === user1,
         )
+        const user2Interaction = capturedInteractions.find(
+          (i) => i.prId === prId && i.userId === user2,
+        )
         expect(user1Interaction?.status).toBe('REVIEWED')
+        expect(user2Interaction?.status).toBe('REVIEWED')
       }
     })
   })
@@ -131,7 +138,7 @@ describe('DatabaseService', () => {
       await service.enqueuePR('https://github.com/example/repo/pull/1', undefined, team1, 'user-1')
       await service.enqueuePR('https://github.com/example/repo/pull/2', undefined, team2, 'user-1')
 
-      let team1Prs: any[] = []
+      let team1Prs: PullRequest[] = []
       service.subscribeToTeamQueue(team1, (prs) => {
         team1Prs = prs
       })
@@ -145,6 +152,47 @@ describe('DatabaseService', () => {
       const unsubscribe = service.subscribeToTeamQueue(teamId, () => {})
 
       expect(typeof unsubscribe).toBe('function')
+    })
+  })
+
+  describe('deletePR', () => {
+    it('should remove the PR and its interactions from the team queue', async () => {
+      const teamId = 'team-1'
+      const pr = await service.enqueuePR('https://github.com/example/repo/pull/1', undefined, teamId, 'user-1')
+
+      await service.deletePR(pr.id)
+
+      const queue = await service.getTeamQueue(teamId)
+      expect(queue.prs).toHaveLength(0)
+      expect(queue.interactions).toHaveLength(0)
+    })
+  })
+
+  describe('triggerPing', () => {
+    it('should reset reviewed interactions to PENDING and notify other subscribers', async () => {
+      const teamId = 'team-1'
+      const pr = await service.enqueuePR('https://github.com/example/repo/pull/1', undefined, teamId, 'author')
+      await service.markAsReviewed(pr.id, 'reviewer')
+
+      const pinged: PullRequest[] = []
+      service.subscribeToTeamQueue(
+        teamId,
+        () => {},
+        (incoming) => {
+          pinged.push(incoming)
+        },
+        'reviewer',
+      )
+
+      await service.triggerPing(pr.id)
+
+      const queue = await service.getTeamQueue(teamId)
+      expect(queue.prs[0]?.lastPingedAt).toBeGreaterThan(0)
+      expect(queue.interactions.find((interaction) => interaction.userId === 'reviewer')?.status).toBe(
+        'PENDING',
+      )
+      expect(pinged).toHaveLength(1)
+      expect(pinged[0]?.id).toBe(pr.id)
     })
   })
 })

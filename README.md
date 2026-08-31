@@ -98,7 +98,12 @@ To use a different backend, see [Database](#database).
 
 The popup and service worker never import a vendor client. They call `createDatabaseService()` in `services/db.ts`, which returns a `DatabaseServiceContract`: enqueue, ping, mark reviewed, delete, load the team queue, and subscribe to live updates.
 
-The shipped adapter is **Supabase**. Set `VITE_DATABASE_PROVIDER=supabase` (the default), then follow [SUPABASE_SETUP.md](SUPABASE_SETUP.md).
+Shipped adapters:
+
+| Provider | `VITE_DATABASE_PROVIDER` | Use it for |
+| --- | --- | --- |
+| **Supabase** (default) | `supabase` | A real shared team queue. Follow [SUPABASE_SETUP.md](SUPABASE_SETUP.md). |
+| **Memory** | `memory` | Unit tests and local UI without a backend. Data lives in the current JS process and is gone on reload. It does not share a queue across teammates. |
 
 ### What the backend has to provide
 
@@ -114,16 +119,17 @@ You need two collections:
 | Backend | Fit | Use it when |
 | --- | --- | --- |
 | **Supabase (Postgres)** | Best default. Already implemented. SQL, Row-Level Security, and Realtime match this product. | You are starting from scratch, or you want Postgres. |
+| **Memory** | Already implemented in `services/memoryDatabase.ts`. In-process maps; no network. | Unit tests, or trying the UI without Supabase credentials. Not for a team. |
 | **Firebase Cloud Firestore** | Snapshot listeners map cleanly to `subscribeToTeamQueue`. | The team already lives in Firebase. |
 | **Convex** | TypeScript queries/mutations and subscriptions sit close to the contract. | You want the adapter to stay in TypeScript. |
 | **AWS Amplify Data (AppSync + DynamoDB)** | GraphQL subscriptions cover live queue updates. | The team already runs on AWS. |
 | **Appwrite or PocketBase** | Self-hosted BaaS with realtime. | You need to run the database yourself. |
 
-Skip browser-only stores (localStorage, IndexedDB, SQLite in the extension). They do not share a queue. Skip warehouses and unexposed SQL servers; they are the wrong shape and the extension cannot talk to them directly.
+Skip persistent browser-only stores (localStorage, IndexedDB, SQLite in the extension) as a team backend. They do not share a queue. The memory adapter is the exception: it is for tests and throwaway local runs, not production. Skip warehouses and unexposed SQL servers; they are the wrong shape and the extension cannot talk to them directly.
 
 ### Add your own adapter
 
-1. Implement `DatabaseServiceContract` (see `services/db.ts`) in a new module, the same way `services/supabaseDatabase.ts` wraps Supabase.
+1. Implement `DatabaseServiceContract` (see `services/db.ts`) in a new module, the same way `services/supabaseDatabase.ts` wraps Supabase or `services/memoryDatabase.ts` wraps in-memory maps.
 2. Register it in `createDatabaseService()` and point `VITE_DATABASE_PROVIDER` at that name.
 3. Give every teammate the same backend URL and credentials so they share one queue.
 
@@ -159,7 +165,7 @@ If Chrome reports that it could not load `icon-128.png`, the file in `public/` i
 
 ## Tests
 
-Tests live in `tests/`, mirroring the source folders (`tests/src/App.test.ts` covers `src/App.tsx`, and so on). Run the suite with:
+Tests live in `tests/`, mirroring the source folders (`tests/src/App.test.ts` covers `src/App.tsx`, and so on). Database tests use `MemoryDatabaseService` so the suite does not call a live backend. Run it with:
 
 ```bash
 npm test -- --run
@@ -176,8 +182,9 @@ npm run build
 - `tests/`: unit tests, laid out to match the source folders.
 - `src/App.tsx`: popup UI, username and reminder settings, role-based actions, optimistic enqueue/delete, and realtime queue updates.
 - `src/background.ts`: service worker for reminder alarms, ping subscriptions, and desktop notifications.
-- `services/db.ts`: database contract and `createDatabaseService()` factory.
+- `services/db.ts`: database contract and `createDatabaseService()` factory (`supabase` or `memory`).
 - `services/supabaseDatabase.ts`: default Supabase adapter (reads, writes, ping, row mapping, Realtime).
+- `services/memoryDatabase.ts`: in-memory adapter for unit tests and local runs without a backend.
 - `utils/reminders.ts`: alarm scheduling and “pending reviews from others” counting.
 - `utils/ping.ts`: local ping suppression and reviewer toast helpers.
 - `utils/storage.ts`: Chrome storage wrapper for user preferences, with localStorage fallback.
