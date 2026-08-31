@@ -27,6 +27,8 @@ const defaultPreferences: UserPreferences = {
   isDndActive: false,
 }
 
+export const MAX_USERNAME_LENGTH = 30
+
 export const createRandomUsername = () => `Developer ${Math.floor(Math.random() * 999) + 1}`
 
 export const needsGeneratedUsername = (userId?: string) => {
@@ -34,8 +36,16 @@ export const needsGeneratedUsername = (userId?: string) => {
   return trimmed.length === 0 || trimmed === 'demo-user' || trimmed.startsWith('user-')
 }
 
-export const resolveUsername = (userId?: string) =>
-  needsGeneratedUsername(userId) ? createRandomUsername() : userId?.trim() ?? createRandomUsername()
+export const isUsernameTooLong = (userId?: string) =>
+  (userId?.trim() ?? '').length > MAX_USERNAME_LENGTH
+
+export const resolveUsername = (userId?: string) => {
+  if (needsGeneratedUsername(userId)) {
+    return createRandomUsername()
+  }
+
+  return userId?.trim().slice(0, MAX_USERNAME_LENGTH) ?? createRandomUsername()
+}
 
 export const createQueueTitle = (id: string, url?: string) => {
   if (id && id.trim().length > 0) {
@@ -155,6 +165,20 @@ export const replaceQueueItem = <T extends { id: string }>(queue: T[], id: strin
 export const removeQueueItem = <T extends { id: string }>(queue: T[], id: string) =>
   queue.filter((existing) => existing.id !== id)
 
+export const isValidPrUrl = (value: string) => {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return false
+  }
+
+  try {
+    const parsed = new URL(trimmed)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
 export const openReviewTab = (url: string) => {
   if (!url.trim()) {
     return
@@ -219,7 +243,7 @@ function App() {
           ...defaultPreferences,
           ...savedPreferences,
           userId: savedPreferences.userId?.trim()
-            ? savedPreferences.userId.trim()
+            ? savedPreferences.userId.trim().slice(0, MAX_USERNAME_LENGTH)
             : createRandomUsername(),
           teamId: SHARED_TEAM_ID,
         }
@@ -275,12 +299,14 @@ function App() {
     return unsubscribe
   }, [preferences.teamId, preferences.userId])
 
-  const canEnqueue = useMemo(() => prUrl.trim().length > 0, [prUrl])
+  const isUrlInvalid = prUrl.trim().length > 0 && !isValidPrUrl(prUrl)
+  const isUsernameInvalid = isUsernameTooLong(preferences.userId)
+  const canEnqueue = useMemo(() => isValidPrUrl(prUrl), [prUrl])
 
   const enqueuePr = async () => {
     const url = prUrl.trim()
     const title = prTitle.trim()
-    if (!url) {
+    if (!isValidPrUrl(url)) {
       return
     }
 
@@ -419,10 +445,19 @@ function App() {
 
       <section className="mb-4 grid grid-cols-2 gap-2">
         <input
+          type="url"
+          inputMode="url"
+          autoComplete="url"
           value={prUrl}
           onChange={(event) => setPrUrl(event.target.value)}
-          placeholder="URL"
-          className="min-w-0 rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none ring-emerald-500 focus:ring"
+          placeholder="https://..."
+          aria-invalid={isUrlInvalid}
+          aria-describedby={isUrlInvalid ? 'pr-url-error' : undefined}
+          className={`min-w-0 rounded-md border bg-slate-900 px-3 py-2 text-sm outline-none focus:ring ${
+            isUrlInvalid
+              ? 'border-red-500 ring-red-500'
+              : 'border-slate-700 ring-emerald-500'
+          }`}
         />
         <input
           value={prTitle}
@@ -430,6 +465,11 @@ function App() {
           placeholder="Title (optional)"
           className="min-w-0 rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none ring-emerald-500 focus:ring"
         />
+        {isUrlInvalid ? (
+          <p id="pr-url-error" className="col-span-2 text-xs text-red-400">
+            Enter a valid http or https URL.
+          </p>
+        ) : null}
         <button
           type="button"
           onClick={() => void enqueuePr()}
@@ -449,6 +489,8 @@ function App() {
           id="username"
           value={preferences.userId}
           placeholder="Developer 1"
+          aria-invalid={isUsernameInvalid}
+          aria-describedby={isUsernameInvalid ? 'username-error' : undefined}
           onChange={(event) =>
             setPreferences((current) => ({
               ...current,
@@ -461,8 +503,17 @@ function App() {
               userId: resolveUsername(current.userId),
             }))
           }
-          className="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none ring-emerald-500 focus:ring"
+          className={`mt-1 w-full rounded-md border bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:ring ${
+            isUsernameInvalid
+              ? 'border-red-500 ring-red-500'
+              : 'border-slate-700 ring-emerald-500'
+          }`}
         />
+        {isUsernameInvalid ? (
+          <p id="username-error" className="mt-1 text-xs text-red-400">
+            Username must be {MAX_USERNAME_LENGTH} characters or fewer.
+          </p>
+        ) : null}
         <p className="mt-1 mb-3 text-xs text-slate-500">
           Use a different username from your reviewer. Leave it blank to get a name like Developer 1.
         </p>
